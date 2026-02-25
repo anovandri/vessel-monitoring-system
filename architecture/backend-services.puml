@@ -1,0 +1,472 @@
+@startuml VMS-Backend-Services
+!theme plain
+
+title VMS Backend Services - Java 21 Spring Boot Architecture
+
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+skinparam defaultFontName Inter
+
+' ===== API GATEWAY =====
+package "API Gateway Layer" #E6F7FF {
+    component "Spring Cloud Gateway" as GATEWAY {
+        [Rate Limiting\n(Redis)]
+        [Authentication Filter\n(JWT)]
+        [Request Routing]
+        [Load Balancing]
+        [Circuit Breaker]
+    }
+}
+
+' ===== MICROSERVICES =====
+package "Microservices (Java 21 + Virtual Threads)" {
+    
+    ' ===== VESSEL SERVICE =====
+    package "Vessel Service\n:8081" #E8FFE8 {
+        component "REST Controllers" as VC_CTRL {
+            [GET /api/vessels]
+            [GET /api/vessels/{id}]
+            [GET /api/vessels/search]
+            [GET /api/vessels/{id}/track]
+        }
+        
+        component "Service Layer" as VC_SVC {
+            [VesselService\n(Virtual Threads)]
+            [PositionService\n(Virtual Threads)]
+            [TrackService\n(Virtual Threads)]
+        }
+        
+        component "Repository" as VC_REPO {
+            [VesselRepository\n(Spring Data JPA)]
+            [PositionRepository\n(PostGIS Queries)]
+        }
+    }
+    
+    ' ===== ALERT SERVICE =====
+    package "Alert Service\n:8082" #FFE8E8 {
+        component "REST Controllers" as AC_CTRL {
+            [GET /api/alerts]
+            [GET /api/alerts/{id}]
+            [POST /api/alerts/ack]
+            [DELETE /api/alerts/{id}]
+        }
+        
+        component "Alert Engine" as AC_ENGINE {
+            [Kafka Consumer\n(Virtual Threads)]
+            [Rule Evaluator]
+            [Severity Calculator]
+            [Alert Processor]
+        }
+        
+        component "Repository" as AC_REPO {
+            [AlertRepository]
+            [AlertRuleRepository]
+        }
+    }
+    
+    ' ===== ANALYTICS SERVICE =====
+    package "Analytics Service\n:8083" #FFF4E6 {
+        component "REST Controllers" as AN_CTRL {
+            [GET /api/analytics/dashboard]
+            [GET /api/analytics/traffic]
+            [GET /api/analytics/vessels]
+            [GET /api/analytics/reports]
+        }
+        
+        component "Service Layer" as AN_SVC {
+            [DashboardService\n(Virtual Threads)]
+            [TrafficAnalyzer\n(Virtual Threads)]
+            [ReportGenerator\n(Virtual Threads)]
+        }
+        
+        component "Repository" as AN_REPO {
+            [ClickHouse Client\n(Time-Series Queries)]
+            [AggregationRepository]
+        }
+    }
+    
+    ' ===== HISTORY SERVICE =====
+    package "History Service\n:8084" #E8F0FF {
+        component "REST Controllers" as HC_CTRL {
+            [GET /api/history/tracks]
+            [GET /api/history/playback]
+            [POST /api/history/export]
+        }
+        
+        component "Service Layer" as HC_SVC {
+            [TrackQueryService\n(Virtual Threads)]
+            [PlaybackService\n(Virtual Threads)]
+            [ExportService\n(Virtual Threads)]
+        }
+        
+        component "Repository" as HC_REPO {
+            [ClickHouse Client\n(Historical Data)]
+            [TrackRepository]
+        }
+    }
+    
+    ' ===== USER SERVICE =====
+    package "User Service\n:8085" #F0E6FF {
+        component "REST Controllers" as UC_CTRL {
+            [POST /api/auth/login]
+            [POST /api/auth/refresh]
+            [GET /api/users/profile]
+            [PUT /api/users/settings]
+        }
+        
+        component "Service Layer" as UC_SVC {
+            [AuthService\n(Virtual Threads)]
+            [UserService\n(Virtual Threads)]
+            [JwtTokenProvider]
+        }
+        
+        component "Repository" as UC_REPO {
+            [UserRepository]
+            [RoleRepository]
+        }
+    }
+    
+    ' ===== WEBSOCKET SERVER =====
+    package "WebSocket Server\n:8090" #E8F8FF {
+        component "WebSocket Handler" as WS_HANDLER {
+            [Connection Manager\n(Virtual Threads)]
+            [Message Router]
+            [Session Manager]
+        }
+        
+        component "Event Listeners" as WS_LISTENERS {
+            [Position Update Listener\n(Kafka)]
+            [Alert Listener\n(Kafka)]
+            [Statistics Listener\n(Redis Pub/Sub)]
+        }
+        
+        component "Broadcasting" as WS_BROADCAST {
+            [Broadcast to All\n(Virtual Threads)]
+            [Broadcast to Room]
+            [Unicast Message]
+        }
+    }
+}
+
+' ===== SHARED COMPONENTS =====
+package "Shared Components" #F5F5F5 {
+    component "Common Libraries" as COMMON {
+        [Exception Handlers]
+        [DTOs & Mappers]
+        [Validation]
+        [Logging (SLF4J)]
+        [Metrics (Micrometer)]
+    }
+    
+    component "Security" as SECURITY {
+        [JWT Authentication]
+        [Role-Based Access]
+        [API Key Validation]
+    }
+    
+    component "Configuration" as CONFIG {
+        [Spring Cloud Config]
+        [Environment Profiles]
+        [Feature Flags]
+    }
+}
+
+' ===== DATA STORES =====
+database "Data Stores" {
+    database "PostgreSQL\n+ PostGIS" as PG
+    database "ClickHouse" as CH
+    database "Redis" as REDIS
+    database "Kafka" as KAFKA
+}
+
+' ===== RELATIONSHIPS =====
+GATEWAY --> VC_CTRL
+GATEWAY --> AC_CTRL
+GATEWAY --> AN_CTRL
+GATEWAY --> HC_CTRL
+GATEWAY --> UC_CTRL
+
+VC_CTRL --> VC_SVC
+VC_SVC --> VC_REPO
+VC_REPO --> PG
+
+AC_CTRL --> AC_ENGINE
+AC_ENGINE --> AC_REPO
+AC_REPO --> PG
+KAFKA --> AC_ENGINE : "Consume Alerts"
+
+AN_CTRL --> AN_SVC
+AN_SVC --> AN_REPO
+AN_REPO --> CH
+
+HC_CTRL --> HC_SVC
+HC_SVC --> HC_REPO
+HC_REPO --> CH
+
+UC_CTRL --> UC_SVC
+UC_SVC --> UC_REPO
+UC_REPO --> PG
+
+WS_HANDLER --> WS_LISTENERS
+WS_LISTENERS --> KAFKA : "Subscribe"
+WS_LISTENERS --> REDIS : "Pub/Sub"
+WS_HANDLER --> WS_BROADCAST
+WS_BROADCAST --> REDIS : "Cache"
+
+GATEWAY --> SECURITY
+VC_SVC --> COMMON
+AC_ENGINE --> COMMON
+AN_SVC --> COMMON
+HC_SVC --> COMMON
+UC_SVC --> COMMON
+
+note right of GATEWAY
+  **Virtual Threads Configuration**
+  
+  ```java
+  @Configuration
+  public class VirtualThreadConfig {
+    
+    @Bean
+    public TomcatProtocolHandlerCustomizer<?> 
+        protocolHandlerVirtualThreadExecutorCustomizer() {
+      return protocolHandler -> {
+        protocolHandler.setExecutor(
+          Executors.newVirtualThreadPerTaskExecutor()
+        );
+      };
+    }
+    
+    @Bean
+    public AsyncTaskExecutor applicationTaskExecutor() {
+      TaskExecutorAdapter adapter = new TaskExecutorAdapter(
+        Executors.newVirtualThreadPerTaskExecutor()
+      );
+      adapter.setTaskDecorator(/* ... */);
+      return adapter;
+    }
+  }
+  ```
+  
+  **Benefits:**
+  - Handle 100K+ concurrent requests
+  - Low memory footprint
+  - Efficient I/O operations
+  - Simplified async code
+end note
+
+note right of VC_SVC
+  **Vessel Service Example**
+  
+  ```java
+  @Service
+  public class VesselService {
+    
+    // Virtual threads handle this efficiently
+    @Async
+    public CompletableFuture<List<Vessel>> 
+        searchVessels(String query) {
+      
+      // Parallel queries using virtual threads
+      var vessels = vesselRepo.findByNameLike(query);
+      var positions = positionRepo
+        .findLatestByMmsi(vessels.stream()
+          .map(Vessel::getMmsi)
+          .toList());
+      
+      return CompletableFuture.completedFuture(
+        mergeData(vessels, positions)
+      );
+    }
+    
+    // PostGIS spatial query
+    @Transactional(readOnly = true)
+    public List<Vessel> findVesselsInBounds(
+        double minLat, double minLon,
+        double maxLat, double maxLon) {
+      
+      return positionRepo.findWithin(
+        String.format(
+          "POLYGON((%f %f, %f %f, %f %f, %f %f, %f %f))",
+          minLon, minLat,
+          maxLon, minLat,
+          maxLon, maxLat,
+          minLon, maxLat,
+          minLon, minLat
+        )
+      );
+    }
+  }
+  ```
+end note
+
+note right of AC_ENGINE
+  **Alert Processing with Kafka**
+  
+  ```java
+  @Service
+  public class AlertEngine {
+    
+    @KafkaListener(
+      topics = "vessel-alerts",
+      concurrency = "10"  // 10 virtual threads
+    )
+    public void processAlert(
+        @Payload AlertMessage msg) {
+      
+      // Evaluate severity
+      var severity = calculateSeverity(msg);
+      
+      // Save to database
+      var alert = Alert.builder()
+        .mmsi(msg.getMmsi())
+        .type(msg.getType())
+        .severity(severity)
+        .timestamp(Instant.now())
+        .build();
+      
+      alertRepo.save(alert);
+      
+      // Broadcast to WebSocket
+      webSocketService.broadcast(alert);
+      
+      // Send notifications (if critical)
+      if (severity == Severity.CRITICAL) {
+        notificationService.sendEmail(alert);
+        notificationService.sendSms(alert);
+      }
+    }
+    
+    private Severity calculateSeverity(
+        AlertMessage msg) {
+      return switch (msg.getType()) {
+        case AIS_LOST -> Severity.CRITICAL;
+        case SPEED_ANOMALY -> Severity.WARNING;
+        case GEOFENCE_ENTRY -> Severity.INFO;
+        default -> Severity.LOW;
+      };
+    }
+  }
+  ```
+end note
+
+note bottom of WS_HANDLER
+  **WebSocket with Virtual Threads**
+  
+  ```java
+  @Configuration
+  @EnableWebSocket
+  public class WebSocketConfig 
+      implements WebSocketConfigurer {
+    
+    @Override
+    public void registerWebSocketHandlers(
+        WebSocketHandlerRegistry registry) {
+      registry
+        .addHandler(positionHandler(), "/ws/positions")
+        .addHandler(alertHandler(), "/ws/alerts")
+        .setAllowedOrigins("*");
+    }
+  }
+  
+  @Component
+  public class PositionWebSocketHandler 
+      extends TextWebSocketHandler {
+    
+    private final Set<WebSocketSession> sessions = 
+      ConcurrentHashMap.newKeySet();
+    
+    @Override
+    public void afterConnectionEstablished(
+        WebSocketSession session) {
+      sessions.add(session);
+      logger.info("Client connected: {}", 
+        session.getId());
+    }
+    
+    // Called from Kafka listener
+    @Async  // Uses virtual thread executor
+    public void broadcastPosition(Position pos) {
+      var message = objectMapper
+        .writeValueAsString(pos);
+      
+      // Parallel broadcast using virtual threads
+      sessions.parallelStream()
+        .forEach(session -> {
+          try {
+            session.sendMessage(
+              new TextMessage(message)
+            );
+          } catch (IOException e) {
+            logger.error("Send failed", e);
+          }
+        });
+    }
+  }
+  ```
+end note
+
+note bottom of AN_REPO
+  **ClickHouse Analytics Queries**
+  
+  ```java
+  @Repository
+  public class AnalyticsRepository {
+    
+    @Autowired
+    private JdbcTemplate clickHouseTemplate;
+    
+    // Fast aggregation query
+    public TrafficStats getTrafficStats(
+        LocalDate start, LocalDate end) {
+      
+      String sql = """
+        SELECT 
+          toDate(timestamp) as date,
+          count(*) as message_count,
+          countDistinct(mmsi) as unique_vessels,
+          avg(speed) as avg_speed
+        FROM vessel_tracks
+        WHERE timestamp BETWEEN ? AND ?
+        GROUP BY date
+        ORDER BY date
+        """;
+      
+      return clickHouseTemplate.query(
+        sql,
+        new Object[]{start, end},
+        new TrafficStatsMapper()
+      );
+    }
+    
+    // Vessel type distribution
+    public Map<String, Long> getVesselTypeDistribution() {
+      String sql = """
+        SELECT 
+          vessel_type,
+          countDistinct(mmsi) as count
+        FROM vessel_tracks
+        WHERE timestamp >= now() - INTERVAL 1 DAY
+        GROUP BY vessel_type
+        ORDER BY count DESC
+        """;
+      
+      // Executes in 1-2 seconds on billions of records
+      return clickHouseTemplate.query(sql,
+        rs -> {
+          Map<String, Long> result = new HashMap<>();
+          while (rs.next()) {
+            result.put(
+              rs.getString("vessel_type"),
+              rs.getLong("count")
+            );
+          }
+          return result;
+        }
+      );
+    }
+  }
+  ```
+end note
+
+@enduml

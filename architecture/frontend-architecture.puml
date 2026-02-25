@@ -1,0 +1,312 @@
+@startuml VMS-Frontend-Architecture
+!theme plain
+
+title VMS Frontend Architecture - React + TypeScript + OpenLayers
+
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+skinparam defaultFontName Inter
+
+' ===== FRONTEND ARCHITECTURE =====
+package "React Application (Vite + TypeScript)" {
+    
+    ' ===== PRESENTATION LAYER =====
+    package "Presentation Layer" #E6F7FF {
+        component "Pages" as PAGES {
+            [Dashboard Page]
+            [Map View Page]
+            [Analytics Page]
+            [History Page]
+            [Settings Page]
+        }
+        
+        component "UI Components" as COMPONENTS #CCE5FF {
+            [Sidebar Navigation]
+            [Top Bar]
+            [Panel Components]
+            [Card Components]
+            [Form Components]
+            [Modal Components]
+        }
+        
+        component "Map Components" as MAP_COMP #99CCFF {
+            [Map Container]
+            [Vessel Marker Layer]
+            [Track Line Layer]
+            [Geofence Layer]
+            [Map Controls]
+            [Clustering Manager]
+        }
+    }
+    
+    ' ===== STATE MANAGEMENT =====
+    package "State Management" #E8FFE8 {
+        component "Redux Toolkit" as REDUX {
+            [Vessel Slice\n(positions, details)]
+            [Alert Slice\n(active alerts)]
+            [Map Slice\n(view, zoom, layers)]
+            [User Slice\n(auth, preferences)]
+            [Analytics Slice]
+            [History Slice]
+        }
+        
+        component "React Query" as QUERY #CCF5CC {
+            [API Queries Cache]
+            [Mutation Handlers]
+            [Background Refetch]
+        }
+        
+        component "WebSocket Client" as WS_CLIENT #99E699 {
+            [Position Updates Listener]
+            [Alert Listener]
+            [Statistics Listener]
+            [Connection Manager]
+        }
+    }
+    
+    ' ===== SERVICES LAYER =====
+    package "Services Layer" #FFF4E6 {
+        component "API Services" as API {
+            [Vessel API Service]
+            [Alert API Service]
+            [Analytics API Service]
+            [History API Service]
+            [User API Service]
+        }
+        
+        component "WebSocket Service" as WS_SVC #FFE8CC {
+            [Connection Handler]
+            [Message Parser]
+            [Reconnection Logic]
+            [Heartbeat Monitor]
+        }
+        
+        component "Map Service" as MAP_SVC #FFD9B3 {
+            [OpenLayers Controller]
+            [Marker Manager]
+            [Track Renderer]
+            [Animation Engine]
+            [Clustering Logic]
+        }
+    }
+    
+    ' ===== MAP INTEGRATION =====
+    package "OpenLayers + OpenStreetMap" #E8F0FF {
+        component "OpenLayers Core" as OL {
+            [Map Instance]
+            [View Controller]
+            [Layer Manager]
+            [Interaction Handlers]
+        }
+        
+        component "Tile Layers" as TILES #CCE5FF {
+            [OSM Standard Tiles]
+            [OSM Dark Theme]
+            [Custom Tile Server\n(Optional)]
+        }
+        
+        component "Vector Layers" as VECTORS #B3D9FF {
+            [Vessel Marker Layer\n(Point Features)]
+            [Track Line Layer\n(LineString)]
+            [Geofence Layer\n(Polygon)]
+            [Grid Overlay Layer]
+        }
+        
+        component "Feature Styling" as STYLES #99CCFF {
+            [Vessel Icon Styles\n(rotation, color)]
+            [Track Line Styles\n(dashed, colored)]
+            [Cluster Styles\n(count badge)]
+            [Selection Styles]
+        }
+    }
+    
+    ' ===== UTILITIES =====
+    package "Utilities & Helpers" #F5F5F5 {
+        [Coordinate Conversion\n(lat/lon to map projection)]
+        [Date/Time Formatters]
+        [Unit Converters\n(knots, meters, etc)]
+        [Geospatial Calculations\n(distance, bearing)]
+        [Animation Helpers]
+        [Local Storage Manager]
+    }
+}
+
+' ===== EXTERNAL DEPENDENCIES =====
+cloud "External APIs" {
+    [Spring Boot Backend\nREST API]
+    [WebSocket Server\nwss://api.vms.com/ws]
+    [OpenStreetMap Tiles\nhttps://tile.osm.org]
+}
+
+' ===== NPM PACKAGES =====
+database "NPM Dependencies" {
+    package "Core" {
+        [react: ^18.2.0]
+        [react-dom: ^18.2.0]
+        [typescript: ^5.0.0]
+        [vite: ^5.0.0]
+    }
+    
+    package "State Management" {
+        [@reduxjs/toolkit: ^2.0.0]
+        [react-redux: ^9.0.0]
+        [@tanstack/react-query: ^5.0.0]
+    }
+    
+    package "UI Libraries" {
+        [tailwindcss: ^3.4.0]
+        [lucide-react: ^0.300.0]
+        [react-hot-toast: ^2.4.0]
+        [recharts: ^2.10.0]
+    }
+    
+    package "Map Libraries" {
+        [ol: ^9.0.0\n(OpenLayers)]
+        [ol-ext: ^4.0.0\n(Extensions)]
+        [proj4: ^2.9.0\n(Projections)]
+    }
+    
+    package "WebSocket" {
+        [socket.io-client: ^4.6.0]
+    }
+    
+    package "Date & Time" {
+        [date-fns: ^3.0.0]
+        [dayjs: ^1.11.0]
+    }
+    
+    package "Forms" {
+        [react-hook-form: ^7.49.0]
+        [zod: ^3.22.0]
+    }
+}
+
+' ===== RELATIONSHIPS =====
+PAGES --> COMPONENTS : "Compose UI"
+PAGES --> MAP_COMP : "Render Map"
+COMPONENTS --> REDUX : "Read/Dispatch"
+MAP_COMP --> MAP_SVC : "Map Operations"
+
+REDUX --> API : "Fetch Data"
+REDUX --> WS_CLIENT : "Listen Updates"
+QUERY --> API : "HTTP Requests"
+WS_CLIENT --> WS_SVC : "Connect"
+
+MAP_SVC --> OL : "Control Map"
+OL --> TILES : "Load Tiles"
+OL --> VECTORS : "Render Layers"
+VECTORS --> STYLES : "Apply Styles"
+
+API --> [Spring Boot Backend\nREST API] : "HTTPS"
+WS_SVC --> [WebSocket Server\nwss://api.vms.com/ws] : "WSS"
+TILES --> [OpenStreetMap Tiles\nhttps://tile.osm.org] : "HTTPS"
+
+note right of OL
+  **OpenLayers Configuration**
+  
+  ```typescript
+  const map = new Map({
+    target: 'map-container',
+    layers: [
+      new TileLayer({
+        source: new OSM({
+          url: 'https://{a-c}.tile.osm.org/{z}/{x}/{y}.png'
+        })
+      }),
+      new VectorLayer({
+        source: vesselSource,
+        style: vesselStyleFunction
+      })
+    ],
+    view: new View({
+      center: fromLonLat([103.8510, 1.2896]),
+      zoom: 10
+    })
+  });
+  ```
+end note
+
+note right of MAP_SVC
+  **Marker Management**
+  
+  1. Create Feature:
+     ```typescript
+     const feature = new Feature({
+       geometry: new Point(
+         fromLonLat([lon, lat])
+       ),
+       mmsi: '538005989',
+       rotation: 245
+     });
+     ```
+  
+  2. Update Position (smooth):
+     ```typescript
+     const animate = () => {
+       const progress = (Date.now() - start) / duration;
+       const current = interpolate(from, to, progress);
+       feature.getGeometry().setCoordinates(current);
+     };
+     ```
+  
+  3. Clustering (1000+ vessels):
+     ```typescript
+     const cluster = new Cluster({
+       source: vesselSource,
+       distance: 40
+     });
+     ```
+end note
+
+note bottom of WS_CLIENT
+  **WebSocket Events**
+  
+  ```typescript
+  socket.on('position:update', (data) => {
+    dispatch(updateVesselPosition(data));
+    updateMarker(data.mmsi, data.position);
+  });
+  
+  socket.on('alert:new', (alert) => {
+    dispatch(addAlert(alert));
+    toast.error(alert.message);
+  });
+  
+  socket.on('stats:update', (stats) => {
+    dispatch(updateStatistics(stats));
+  });
+  ```
+end note
+
+note bottom of REDUX
+  **Redux Store Structure**
+  
+  ```typescript
+  interface RootState {
+    vessels: {
+      byId: Record<string, Vessel>;
+      positions: Record<string, Position>;
+      selectedId: string | null;
+    };
+    alerts: {
+      items: Alert[];
+      unreadCount: number;
+    };
+    map: {
+      center: [number, number];
+      zoom: number;
+      layers: {
+        vessels: boolean;
+        tracks: boolean;
+        geofences: boolean;
+      };
+    };
+    user: {
+      profile: User;
+      preferences: Preferences;
+    };
+  }
+  ```
+end note
+
+@enduml

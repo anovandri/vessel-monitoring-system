@@ -1,0 +1,238 @@
+@startuml VMS-System-Architecture
+!define DEVICONS https://raw.githubusercontent.com/tupadr3/plantuml-icon-font-sprites/master/devicons
+!define FONTAWESOME https://raw.githubusercontent.com/tupadr3/plantuml-icon-font-sprites/master/font-awesome-5
+!include DEVICONS/react.puml
+!include DEVICONS/java.puml
+!include FONTAWESOME/database.puml
+!include FONTAWESOME/ship.puml
+
+title Vessel Monitoring System (VMS) - Production Architecture
+
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+skinparam defaultFontName Inter
+skinparam shadowing false
+
+' Define colors
+!define PRIMARY_COLOR #00E5FF
+!define SECONDARY_COLOR #0F1420
+!define SUCCESS_COLOR #00FF88
+!define DANGER_COLOR #FF3D71
+!define WARNING_COLOR #FFB800
+
+' ===== DATA INGESTION LAYER =====
+package "Data Ingestion Layer" <<Cloud>> #E8F4F8 {
+    component "AIS Data Providers" as AIS #FFE8CC {
+        [Marine Traffic API] as MTAPI
+        [AIS Hub] as AISHUB
+        [Satellite AIS] as SATAIS
+        [Terrestrial AIS] as TERAIS
+    }
+    
+    component "Data Collectors" as COLLECTORS #CCE5FF {
+        [AIS Stream Collector\n(Java 21 Virtual Threads)] as COLLECTOR1
+        [Weather API Collector] as COLLECTOR2
+        [Port Data Collector] as COLLECTOR3
+    }
+}
+
+' ===== MESSAGE STREAMING LAYER =====
+package "Message Streaming Layer" <<Cloud>> #FFF4E6 {
+    database "Apache Kafka\n(or Apache Pulsar)" as KAFKA #FFB800 {
+        queue "ais-raw-data" as TOPIC1
+        queue "vessel-positions" as TOPIC2
+        queue "vessel-alerts" as TOPIC3
+        queue "weather-data" as TOPIC4
+    }
+}
+
+' ===== STREAM PROCESSING LAYER =====
+package "Stream Processing Layer" <<Cloud>> #E8F0FF {
+    component "Apache Flink\n(or Spark Streaming)" as FLINK #4A90E2 {
+        [Position Validation] as PROC1
+        [Geofencing Engine] as PROC2
+        [Speed Anomaly Detection] as PROC3
+        [Collision Detection] as PROC4
+        [Track Aggregation] as PROC5
+    }
+}
+
+' ===== BACKEND SERVICES LAYER =====
+package "Backend Services (Java 21 + Spring Boot)" <<Cloud>> #E8FFE8 {
+    
+    component "API Gateway" as GATEWAY #00FF88 {
+        [Spring Cloud Gateway\n(Virtual Threads)]
+    }
+    
+    component "Core Services" as SERVICES #CCF5CC {
+        [Vessel Service\n(Virtual Threads)] as VESSEL_SVC
+        [Alert Service\n(Virtual Threads)] as ALERT_SVC
+        [Analytics Service\n(Virtual Threads)] as ANALYTICS_SVC
+        [History Service\n(Virtual Threads)] as HISTORY_SVC
+        [User Service\n(Virtual Threads)] as USER_SVC
+        [Notification Service\n(Virtual Threads)] as NOTIF_SVC
+    }
+    
+    component "WebSocket Server" as WEBSOCKET #99E699 {
+        [Real-time Position Updates\n(Spring WebFlux)]
+        [Alert Broadcasting]
+        [Live Statistics]
+    }
+}
+
+' ===== DATA STORAGE LAYER =====
+package "Data Storage Layer" <<Database>> #FFE8E8 {
+    database "PostgreSQL + PostGIS\n(Geospatial Data)" as POSTGIS #FF6B6B {
+        [Vessel Master Data]
+        [Current Positions]
+        [Geofence Definitions]
+        [User Data]
+    }
+    
+    database "ClickHouse\n(Time-Series Analytics)" as CLICKHOUSE #FF8C8C {
+        [Historical Positions]
+        [Vessel Tracks]
+        [Analytics Aggregations]
+        [Alert History]
+    }
+    
+    database "Redis\n(Cache & Real-time)" as REDIS #FF3D71 {
+        [Session Cache]
+        [Live Position Cache]
+        [Rate Limiting]
+        [Real-time Counters]
+    }
+    
+    database "Elasticsearch\n(Search & Logs)" as ELASTIC #FFA07A {
+        [Vessel Search Index]
+        [Application Logs]
+        [Alert Search]
+    }
+    
+    database "MinIO / S3\n(Object Storage)" as S3 #FFB399 {
+        [Vessel Images]
+        [Export Files]
+        [Report Archives]
+    }
+}
+
+' ===== FRONTEND LAYER =====
+package "Frontend Layer (React + TypeScript)" <<Web>> #E6F7FF {
+    component "React SPA" as REACT #61DAFB {
+        [Dashboard Component]
+        [Map Component\n(OpenLayers / Mapbox)]
+        [Search Component]
+        [Analytics Component]
+        [History Playback]
+        [Settings Component]
+    }
+    
+    component "State Management" as STATE #80D0FF {
+        [Redux Toolkit]
+        [React Query]
+        [WebSocket Client]
+    }
+    
+    component "Map Library" as MAP #4A90E2 {
+        [OpenLayers\n(Open Source)]
+        [OpenStreetMap Tiles]
+        [Vector Layers]
+        [Marker Clustering]
+    }
+}
+
+' ===== MONITORING & OBSERVABILITY =====
+package "Monitoring & Observability" <<Cloud>> #F5F5F5 {
+    [Prometheus\n(Metrics)] as PROM
+    [Grafana\n(Dashboards)] as GRAFANA
+    [Jaeger\n(Tracing)] as JAEGER
+    [ELK Stack\n(Logging)] as ELK
+}
+
+' ===== INFRASTRUCTURE =====
+package "Infrastructure & DevOps" <<Cloud>> #F0F0F0 {
+    [Kubernetes\n(Container Orchestration)] as K8S
+    [Docker\n(Containers)] as DOCKER
+    [Nginx\n(Load Balancer)] as NGINX
+    [CI/CD Pipeline\n(GitHub Actions)] as CICD
+}
+
+' ===== RELATIONSHIPS =====
+
+' Data Ingestion Flow
+AIS --> COLLECTORS : "AIS NMEA Data\n(TCP/UDP)"
+COLLECTORS --> KAFKA : "Publish Messages"
+
+' Stream Processing Flow
+KAFKA --> FLINK : "Consume & Process"
+FLINK --> POSTGIS : "Write Current State"
+FLINK --> CLICKHOUSE : "Write Time-Series"
+FLINK --> REDIS : "Cache Latest Positions"
+FLINK --> KAFKA : "Publish Alerts"
+
+' Backend Services Flow
+KAFKA --> ALERT_SVC : "Consume Alerts"
+GATEWAY --> SERVICES : "Route Requests"
+SERVICES --> POSTGIS : "CRUD Operations"
+SERVICES --> CLICKHOUSE : "Analytics Queries"
+SERVICES --> REDIS : "Cache R/W"
+SERVICES --> ELASTIC : "Search Queries"
+SERVICES --> S3 : "Store Files"
+
+' Real-time Updates
+REDIS --> WEBSOCKET : "Pub/Sub"
+ALERT_SVC --> WEBSOCKET : "Push Alerts"
+ALERT_SVC --> NOTIF_SVC : "Send Notifications"
+
+' Frontend Flow
+REACT --> NGINX : "HTTP/HTTPS"
+NGINX --> GATEWAY : "Proxy Requests"
+GATEWAY --> WEBSOCKET : "WebSocket Connection"
+WEBSOCKET --> REACT : "Real-time Updates"
+MAP --> REACT : "Render Vessels"
+
+' Monitoring
+SERVICES --> PROM : "Expose Metrics"
+SERVICES --> JAEGER : "Trace Data"
+SERVICES --> ELK : "Log Events"
+PROM --> GRAFANA : "Query Metrics"
+
+' Infrastructure
+K8S --> DOCKER : "Manage Containers"
+CICD --> K8S : "Deploy Services"
+
+note right of COLLECTORS
+  **Java 21 Virtual Threads**
+  - High concurrency for AIS streams
+  - Low memory footprint
+  - Efficient I/O handling
+  - Process 100K+ messages/sec
+end note
+
+note right of WEBSOCKET
+  **Spring WebFlux + Virtual Threads**
+  - Non-blocking I/O
+  - Handle 10K+ concurrent connections
+  - Real-time position updates (1-5 sec)
+  - Server-Sent Events for alerts
+end note
+
+note bottom of MAP
+  **OpenLayers + OpenStreetMap**
+  - Open source, no license costs
+  - Custom tile server (optional)
+  - Vector layers for vessels
+  - Smooth animations
+  - Clustering for 1000+ vessels
+end note
+
+note bottom of CLICKHOUSE
+  **Time-Series Optimization**
+  - Columnar storage
+  - Compress 100:1 ratio
+  - Query billions of records
+  - 1-2 sec query response
+  - Partition by date
+end note
+
+@enduml

@@ -1,0 +1,702 @@
+@startuml VMS-Deployment-Architecture
+!theme plain
+
+title VMS Deployment Architecture - Kubernetes Production Setup
+
+skinparam backgroundColor #FEFEFE
+skinparam componentStyle rectangle
+skinparam defaultFontName Inter
+
+' ===== EXTERNAL SERVICES =====
+cloud "External Services" {
+    component "AIS Data Providers" as AIS_EXT {
+        [Marine Traffic API]
+        [VesselFinder API]
+        [AIVDM/AIVDO\nStreams]
+    }
+    
+    component "Third-party APIs" as EXT_API {
+        [Weather API]
+        [Port Information]
+        [Email/SMS Gateway]
+    }
+}
+
+' ===== CDN & DNS =====
+cloud "Edge Layer" {
+    component "Cloudflare / CloudFront" as CDN {
+        [Static Assets CDN]
+        [DDoS Protection]
+        [SSL/TLS Termination]
+        [DNS Management]
+    }
+}
+
+' ===== KUBERNETES CLUSTER =====
+node "Kubernetes Cluster (EKS / AKS / GKE)" as K8S {
+    
+    ' ===== INGRESS =====
+    package "Ingress Layer" #E6F7FF {
+        component "Nginx Ingress Controller" as INGRESS {
+            [Load Balancer]
+            [SSL Termination]
+            [Path Routing]
+            [Rate Limiting]
+        }
+    }
+    
+    ' ===== FRONTEND NAMESPACE =====
+    package "Namespace: frontend" #E8FFE8 {
+        component "Frontend Deployment" as FE_DEPLOY {
+            collections "React SPA Pods\n(3 replicas)" as FE_PODS
+            [HPA: 3-10 pods]
+            [Resource: 250m CPU, 256Mi RAM]
+        }
+        
+        component "Nginx Static Server" as FE_NGINX {
+            [Serve Build Files]
+            [Gzip Compression]
+            [Browser Caching]
+        }
+    }
+    
+    ' ===== BACKEND NAMESPACE =====
+    package "Namespace: backend" #FFE8E8 {
+        
+        component "API Gateway" as GW_DEPLOY {
+            collections "Gateway Pods\n(2 replicas)" as GW_PODS
+            [HPA: 2-5 pods]
+            [Resource: 500m CPU, 512Mi RAM]
+        }
+        
+        component "Vessel Service" as VS_DEPLOY {
+            collections "Vessel Pods\n(3 replicas)" as VS_PODS
+            [HPA: 3-10 pods]
+            [Resource: 1 CPU, 1Gi RAM]
+        }
+        
+        component "Alert Service" as AS_DEPLOY {
+            collections "Alert Pods\n(2 replicas)" as AS_PODS
+            [HPA: 2-8 pods]
+            [Resource: 500m CPU, 512Mi RAM]
+        }
+        
+        component "Analytics Service" as AN_DEPLOY {
+            collections "Analytics Pods\n(2 replicas)" as AN_PODS
+            [HPA: 2-6 pods]
+            [Resource: 1 CPU, 2Gi RAM]
+        }
+        
+        component "History Service" as HS_DEPLOY {
+            collections "History Pods\n(2 replicas)" as HS_PODS
+            [HPA: 2-6 pods]
+            [Resource: 1 CPU, 1Gi RAM]
+        }
+        
+        component "User Service" as US_DEPLOY {
+            collections "User Pods\n(2 replicas)" as US_PODS
+            [HPA: 2-4 pods]
+            [Resource: 500m CPU, 512Mi RAM]
+        }
+        
+        component "WebSocket Server" as WS_DEPLOY {
+            collections "WebSocket Pods\n(3 replicas)" as WS_PODS
+            [HPA: 3-10 pods]
+            [Resource: 500m CPU, 512Mi RAM]
+            [Sticky Sessions]
+        }
+    }
+    
+    ' ===== DATA INGESTION NAMESPACE =====
+    package "Namespace: data-ingestion" #FFF4E6 {
+        component "AIS Collector" as COLLECTOR_DEPLOY {
+            collections "Collector Pods\n(5 replicas)" as COLLECTOR_PODS
+            [StatefulSet]
+            [Resource: 1 CPU, 1Gi RAM]
+            [Virtual Threads: 10K connections]
+        }
+        
+        component "Stream Processor" as FLINK_DEPLOY {
+            collections "Flink JobManager\n(1 replica)" as FLINK_JM
+            collections "Flink TaskManager\n(3 replicas)" as FLINK_TM
+            [Resource: 2 CPU, 4Gi RAM each]
+        }
+    }
+    
+    ' ===== MESSAGE QUEUE NAMESPACE =====
+    package "Namespace: messaging" #E8F0FF {
+        component "Kafka Cluster" as KAFKA_DEPLOY {
+            collections "Kafka Brokers\n(3 replicas)" as KAFKA_BROKERS
+            [StatefulSet]
+            [Resource: 2 CPU, 4Gi RAM each]
+            [Persistent Volume: 100Gi SSD]
+        }
+        
+        component "Zookeeper" as ZK_DEPLOY {
+            collections "Zookeeper Nodes\n(3 replicas)" as ZK_NODES
+            [StatefulSet]
+            [Resource: 500m CPU, 512Mi RAM]
+        }
+    }
+    
+    ' ===== DATABASE NAMESPACE =====
+    package "Namespace: database" #F0E6FF {
+        component "PostgreSQL Primary" as PG_PRIMARY {
+            [StatefulSet]
+            [Resource: 4 CPU, 8Gi RAM]
+            [PV: 500Gi SSD]
+            [PostGIS Extension]
+        }
+        
+        component "PostgreSQL Replicas" as PG_REPLICAS {
+            collections "Read Replicas\n(2 replicas)" as PG_REPLICA_PODS
+            [Resource: 2 CPU, 4Gi RAM each]
+        }
+        
+        component "ClickHouse Cluster" as CH_DEPLOY {
+            collections "ClickHouse Shards\n(3 replicas)" as CH_SHARDS
+            [StatefulSet]
+            [Resource: 4 CPU, 16Gi RAM each]
+            [PV: 1Ti SSD per shard]
+            [Distributed Tables]
+        }
+        
+        component "Redis Cluster" as REDIS_DEPLOY {
+            collections "Redis Masters\n(3 replicas)" as REDIS_MASTERS
+            collections "Redis Replicas\n(3 replicas)" as REDIS_REPLICAS
+            [StatefulSet]
+            [Resource: 1 CPU, 2Gi RAM]
+            [PV: 20Gi SSD]
+        }
+        
+        component "Elasticsearch" as ES_DEPLOY {
+            collections "ES Master Nodes\n(3 replicas)" as ES_MASTERS
+            collections "ES Data Nodes\n(3 replicas)" as ES_DATA
+            [StatefulSet]
+            [Resource: 2 CPU, 4Gi RAM]
+            [PV: 200Gi SSD per data node]
+        }
+    }
+    
+    ' ===== STORAGE NAMESPACE =====
+    package "Namespace: storage" #E8F8FF {
+        component "MinIO Object Storage" as MINIO_DEPLOY {
+            collections "MinIO Pods\n(4 replicas)" as MINIO_PODS
+            [StatefulSet]
+            [Resource: 1 CPU, 2Gi RAM]
+            [PV: 1Ti HDD per pod]
+            [Erasure Coding]
+        }
+    }
+    
+    ' ===== MONITORING NAMESPACE =====
+    package "Namespace: monitoring" #FFF0F0 {
+        component "Prometheus" as PROM_DEPLOY {
+            [Time-Series DB]
+            [Service Discovery]
+            [Resource: 2 CPU, 4Gi RAM]
+            [PV: 100Gi SSD]
+            [Retention: 30 days]
+        }
+        
+        component "Grafana" as GRAFANA_DEPLOY {
+            [Dashboards]
+            [Alerting]
+            [Resource: 500m CPU, 512Mi RAM]
+        }
+        
+        component "Jaeger" as JAEGER_DEPLOY {
+            collections "Jaeger Collector" as JAEGER_COL
+            collections "Jaeger Query" as JAEGER_QRY
+            [Resource: 1 CPU, 1Gi RAM]
+        }
+        
+        component "ELK Stack" as ELK_DEPLOY {
+            [Elasticsearch (shared)]
+            [Logstash Pods (2 replicas)]
+            [Kibana (1 replica)]
+            [Filebeat DaemonSet]
+        }
+    }
+}
+
+' ===== MANAGED SERVICES (OPTIONAL) =====
+cloud "Managed Services (Cloud)" #F5F5F5 {
+    database "AWS RDS / Azure DB\n(PostgreSQL)" as RDS
+    database "AWS MSK / Azure Event Hubs\n(Kafka)" as MSK
+    database "AWS ElastiCache\n(Redis)" as ELASTICACHE
+    storage "AWS S3 / Azure Blob\n(Object Storage)" as S3
+}
+
+' ===== CI/CD =====
+cloud "CI/CD Pipeline" {
+    component "GitHub Actions" as CICD {
+        [Build & Test]
+        [Docker Build]
+        [Push to Registry]
+        [Helm Deploy]
+        [Integration Tests]
+    }
+    
+    component "Container Registry" as REGISTRY {
+        [Docker Hub]
+        [AWS ECR]
+        [Azure ACR]
+        [Google GCR]
+    }
+}
+
+' ===== RELATIONSHIPS =====
+AIS_EXT --> COLLECTOR_PODS : "AIS Data Stream"
+CDN --> INGRESS : "HTTPS"
+INGRESS --> FE_PODS : "/*"
+INGRESS --> GW_PODS : "/api/*"
+INGRESS --> WS_PODS : "/ws/*"
+
+FE_PODS --> FE_NGINX
+
+GW_PODS --> VS_PODS
+GW_PODS --> AS_PODS
+GW_PODS --> AN_PODS
+GW_PODS --> HS_PODS
+GW_PODS --> US_PODS
+
+COLLECTOR_PODS --> KAFKA_BROKERS
+FLINK_JM --> FLINK_TM
+FLINK_TM --> KAFKA_BROKERS : "Consume"
+FLINK_TM --> PG_PRIMARY : "Write"
+FLINK_TM --> CH_SHARDS : "Write"
+
+VS_PODS --> PG_PRIMARY : "R/W"
+VS_PODS --> PG_REPLICA_PODS : "Read"
+VS_PODS --> REDIS_MASTERS : "Cache"
+
+AS_PODS --> PG_PRIMARY
+AS_PODS --> KAFKA_BROKERS : "Consume Alerts"
+
+AN_PODS --> CH_SHARDS : "Analytics Queries"
+HS_PODS --> CH_SHARDS : "History Queries"
+US_PODS --> PG_PRIMARY
+
+WS_PODS --> KAFKA_BROKERS : "Subscribe"
+WS_PODS --> REDIS_MASTERS : "Pub/Sub"
+
+KAFKA_BROKERS --> ZK_NODES
+REDIS_MASTERS --> REDIS_REPLICAS : "Replication"
+PG_PRIMARY --> PG_REPLICA_PODS : "Streaming Replication"
+
+PROM_DEPLOY ..> GW_PODS : "Scrape Metrics"
+PROM_DEPLOY ..> VS_PODS : "Scrape"
+PROM_DEPLOY ..> KAFKA_BROKERS : "Scrape"
+GRAFANA_DEPLOY --> PROM_DEPLOY : "Query"
+
+JAEGER_COL <.. GW_PODS : "Traces"
+JAEGER_COL <.. VS_PODS : "Traces"
+JAEGER_QRY --> ES_DATA : "Query"
+
+ELK_DEPLOY ..> GW_PODS : "Logs"
+ELK_DEPLOY ..> VS_PODS : "Logs"
+
+CICD --> REGISTRY : "Push Images"
+REGISTRY --> K8S : "Pull Images"
+
+note right of K8S
+  **Kubernetes Configuration**
+  
+  - Cluster Size: 20-50 nodes
+  - Node Types: 
+    * General: 4 CPU, 16Gi RAM
+    * Memory-optimized: 8 CPU, 32Gi RAM
+    * Compute-optimized: 16 CPU, 16Gi RAM
+  - Auto-scaling: Cluster Autoscaler
+  - Network: Calico / Cilium
+  - Service Mesh: Istio (optional)
+  - Secrets: Sealed Secrets / External Secrets
+end note
+
+note right of INGRESS
+  **Ingress Configuration**
+  
+  ```yaml
+  apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    name: vms-ingress
+    annotations:
+      nginx.ingress.kubernetes.io/rate-limit: "100"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      cert-manager.io/cluster-issuer: "letsencrypt"
+  spec:
+    tls:
+    - hosts:
+      - vms.example.com
+      secretName: vms-tls
+    rules:
+    - host: vms.example.com
+      http:
+        paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: frontend-service
+              port:
+                number: 80
+        - path: /api
+          pathType: Prefix
+          backend:
+            service:
+              name: api-gateway-service
+              port:
+                number: 8080
+        - path: /ws
+          pathType: Prefix
+          backend:
+            service:
+              name: websocket-service
+              port:
+                number: 8090
+  ```
+end note
+
+note bottom of FE_DEPLOY
+  **Frontend Deployment**
+  
+  ```yaml
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: frontend
+    namespace: frontend
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: frontend
+    template:
+      metadata:
+        labels:
+          app: frontend
+      spec:
+        containers:
+        - name: nginx
+          image: vms-frontend:latest
+          ports:
+          - containerPort: 80
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  ---
+  apiVersion: autoscaling/v2
+  kind: HorizontalPodAutoscaler
+  metadata:
+    name: frontend-hpa
+  spec:
+    scaleTargetRef:
+      apiVersion: apps/v1
+      kind: Deployment
+      name: frontend
+    minReplicas: 3
+    maxReplicas: 10
+    metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  ```
+end note
+
+note bottom of VS_DEPLOY
+  **Backend Service Deployment**
+  
+  ```yaml
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: vessel-service
+    namespace: backend
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: vessel-service
+    template:
+      metadata:
+        labels:
+          app: vessel-service
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "8081"
+          prometheus.io/path: "/actuator/prometheus"
+      spec:
+        containers:
+        - name: vessel-service
+          image: vms-vessel-service:latest
+          ports:
+          - containerPort: 8081
+          env:
+          - name: SPRING_PROFILES_ACTIVE
+            value: "production"
+          - name: JAVA_OPTS
+            value: "-Xmx1g -XX:+UseZGC"
+          - name: DB_HOST
+            valueFrom:
+              secretKeyRef:
+                name: db-secret
+                key: host
+          - name: DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: db-secret
+                key: password
+          resources:
+            requests:
+              cpu: 1
+              memory: 1Gi
+            limits:
+              cpu: 2
+              memory: 2Gi
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8081
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 5
+  ---
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: vessel-service
+    namespace: backend
+  spec:
+    selector:
+      app: vessel-service
+    ports:
+    - protocol: TCP
+      port: 8081
+      targetPort: 8081
+    type: ClusterIP
+  ```
+end note
+
+note bottom of KAFKA_DEPLOY
+  **Kafka StatefulSet**
+  
+  ```yaml
+  apiVersion: apps/v1
+  kind: StatefulSet
+  metadata:
+    name: kafka
+    namespace: messaging
+  spec:
+    serviceName: kafka-headless
+    replicas: 3
+    selector:
+      matchLabels:
+        app: kafka
+    template:
+      metadata:
+        labels:
+          app: kafka
+      spec:
+        containers:
+        - name: kafka
+          image: confluentinc/cp-kafka:7.5.0
+          ports:
+          - containerPort: 9092
+            name: client
+          - containerPort: 9093
+            name: internal
+          env:
+          - name: KAFKA_BROKER_ID
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: KAFKA_ZOOKEEPER_CONNECT
+            value: "zookeeper:2181"
+          - name: KAFKA_NUM_PARTITIONS
+            value: "10"
+          - name: KAFKA_DEFAULT_REPLICATION_FACTOR
+            value: "3"
+          - name: KAFKA_LOG_RETENTION_HOURS
+            value: "168"  # 7 days
+          resources:
+            requests:
+              cpu: 2
+              memory: 4Gi
+            limits:
+              cpu: 4
+              memory: 8Gi
+          volumeMounts:
+          - name: data
+            mountPath: /var/lib/kafka/data
+    volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: fast-ssd
+        resources:
+          requests:
+            storage: 100Gi
+  ```
+end note
+
+note bottom of PG_PRIMARY
+  **PostgreSQL StatefulSet**
+  
+  ```yaml
+  apiVersion: apps/v1
+  kind: StatefulSet
+  metadata:
+    name: postgresql-primary
+    namespace: database
+  spec:
+    serviceName: postgresql
+    replicas: 1
+    selector:
+      matchLabels:
+        app: postgresql
+        role: primary
+    template:
+      metadata:
+        labels:
+          app: postgresql
+          role: primary
+      spec:
+        containers:
+        - name: postgresql
+          image: postgis/postgis:15-3.3
+          ports:
+          - containerPort: 5432
+          env:
+          - name: POSTGRES_DB
+            value: "vms_db"
+          - name: POSTGRES_USER
+            valueFrom:
+              secretKeyRef:
+                name: db-secret
+                key: username
+          - name: POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: db-secret
+                key: password
+          - name: PGDATA
+            value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 4
+              memory: 8Gi
+            limits:
+              cpu: 8
+              memory: 16Gi
+          volumeMounts:
+          - name: data
+            mountPath: /var/lib/postgresql/data
+          - name: config
+            mountPath: /etc/postgresql
+        volumes:
+        - name: config
+          configMap:
+            name: postgresql-config
+    volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: fast-ssd
+        resources:
+          requests:
+            storage: 500Gi
+  ```
+end note
+
+note bottom of CICD
+  **CI/CD Workflow**
+  
+  ```yaml
+  # .github/workflows/deploy.yml
+  name: Build and Deploy
+  
+  on:
+    push:
+      branches: [main]
+  
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          java-version: '21'
+          
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
+        
+      - name: Run Tests
+        run: mvn test
+        
+      - name: Build Docker Image
+        run: |
+          docker build -t ${{ secrets.REGISTRY }}/vessel-service:${{ github.sha }} .
+          
+      - name: Push to Registry
+        run: |
+          docker push ${{ secrets.REGISTRY }}/vessel-service:${{ github.sha }}
+    
+    deploy:
+      needs: build
+      runs-on: ubuntu-latest
+      steps:
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --name vms-cluster
+          
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install vessel-service ./charts/vessel-service \
+            --set image.tag=${{ github.sha }} \
+            --namespace backend
+            
+      - name: Run Integration Tests
+        run: |
+          kubectl wait --for=condition=ready pod -l app=vessel-service
+          ./scripts/integration-tests.sh
+  ```
+  
+  **Deployment Strategy:**
+  - Rolling Update (zero downtime)
+  - Blue/Green for major releases
+  - Canary for risky changes
+  - Automatic rollback on failure
+end note
+
+@enduml

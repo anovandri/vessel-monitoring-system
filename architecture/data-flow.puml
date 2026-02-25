@@ -1,0 +1,118 @@
+@startuml VMS-Data-Flow
+!theme plain
+
+title Vessel Monitoring System - Data Flow Architecture
+
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontName Inter
+
+' Define participants
+participant "AIS Provider" as AIS
+participant "Kafka Topic\nais-raw-data" as KAFKA_RAW
+participant "Flink Job\nPosition Processor" as FLINK
+participant "Kafka Topic\nvessel-positions" as KAFKA_POS
+participant "PostgreSQL\n+ PostGIS" as POSTGIS
+participant "ClickHouse" as CLICKHOUSE
+participant "Redis\nCache" as REDIS
+participant "WebSocket\nServer" as WS
+participant "React UI\n(Browser)" as UI
+
+' Data flow sequence
+== Real-Time Position Update Flow ==
+
+AIS -> KAFKA_RAW: 1. AIS NMEA Messages\n!AIVDM,1,1,,A,13u?etPv...*2D
+note right
+  Raw AIS data:
+  - MMSI: 538005989
+  - Lat: 1.2896, Lon: 103.8510
+  - Speed: 14.2 kn
+  - Course: 245°
+  - Timestamp: 2026-02-25T14:30:00Z
+end note
+
+KAFKA_RAW -> FLINK: 2. Consume & Process
+activate FLINK
+FLINK -> FLINK: 3. Parse AIS Message
+FLINK -> FLINK: 4. Validate Position\n(within bounds)
+FLINK -> FLINK: 5. Enrich Data\n(vessel name, type, flag)
+FLINK -> FLINK: 6. Check Geofences
+FLINK -> FLINK: 7. Detect Anomalies\n(speed, course changes)
+
+alt Normal Position Update
+    FLINK -> KAFKA_POS: 8a. Publish Processed Position
+    FLINK -> POSTGIS: 8b. Upsert Current Position\nUPDATE vessel_positions SET...
+    FLINK -> CLICKHOUSE: 8c. Insert Historical Position\nINSERT INTO vessel_tracks...
+    FLINK -> REDIS: 8d. Cache Latest Position\nSET vessel:538005989 {...}
+else Anomaly Detected
+    FLINK -> KAFKA_POS: 9a. Publish Alert\n{"type":"SPEED_ANOMALY",...}
+    note right
+      Alert triggered:
+      - Speed changed from 14kn to 25kn
+      - Threshold: 15kn change in 5min
+      - Severity: WARNING
+    end note
+end
+
+deactivate FLINK
+
+== Backend Processing ==
+
+KAFKA_POS -> WS: 10. Consume Position Updates
+activate WS
+WS -> REDIS: 11. Get Subscribed Clients\nSMEMBERS connections:*
+WS -> UI: 12. Broadcast via WebSocket\n{"type":"POSITION_UPDATE",...}
+deactivate WS
+
+== UI Rendering ==
+
+activate UI
+UI -> UI: 13. Receive WebSocket Message
+UI -> UI: 14. Update Redux Store
+UI -> UI: 15. Render Marker on Map\nOpenLayers.setCoordinates([103.8510, 1.2896])
+note right
+  Map Update:
+  - Move vessel marker smoothly
+  - Update vessel trail
+  - Show speed/course indicator
+  - Trigger animation (0.5s)
+end note
+deactivate UI
+
+== User Search Flow ==
+
+UI -> UI: 16. User Types in Search\n"PACIFIC EXPLORER"
+UI -> REDIS: 17. GET vessel:search:pacific*\n(autocomplete)
+REDIS --> UI: 18. Return Matches (< 50ms)
+
+UI -> POSTGIS: 19. Search Query\nSELECT * FROM vessels\nWHERE name ILIKE '%pacific%'
+POSTGIS --> UI: 20. Return Results (< 100ms)
+
+UI -> UI: 21. Display Search Results\nShow 3 vessels in panel
+
+== History Playback Flow ==
+
+UI -> UI: 22. User Selects Date Range\nFeb 18 - Feb 25, 2026
+UI -> CLICKHOUSE: 23. Query Historical Tracks\nSELECT * FROM vessel_tracks\nWHERE mmsi=538005989\nAND timestamp BETWEEN...
+note right
+  ClickHouse Query:
+  - Scan 10M records
+  - Return 10K positions
+  - Query time: 1-2 sec
+  - Compressed data
+end note
+
+CLICKHOUSE --> UI: 24. Return Track Points (1-2s)
+UI -> UI: 25. Animate Playback\nsetInterval(() => {\n  moveMarker(track[i++])\n}, speed)
+
+== Alert Generation & Display ==
+
+KAFKA_POS -> WS: 26. Alert Message\n{"severity":"CRITICAL",...}
+WS -> UI: 27. Push Alert via WebSocket
+activate UI
+UI -> UI: 28. Show Toast Notification\n"AIS Signal Lost - SEA PHOENIX"
+UI -> UI: 29. Update Alerts Panel\nAdd to alert list (top)
+UI -> UI: 30. Play Alert Sound (optional)
+UI -> UI: 31. Highlight Vessel Marker (red)
+deactivate UI
+
+@enduml

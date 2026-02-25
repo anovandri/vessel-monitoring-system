@@ -1,0 +1,55 @@
+# Test Configuration
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+    properties:
+      max.in.flight.requests.per.connection: 5
+      enable.idempotence: true
+
+vms:
+  collector:
+    enabled: true
+    max-concurrent-collectors: 5
+    default-timeout: 5s
+    schedule:
+      fixed-delay: 60000  # Longer delay for tests
+    
+    ais:
+      enabled: false  # Disabled in tests to avoid real API calls
+      base-url: http://localhost:8080/mock
+      api-key: test-key
+      poll-interval: 60000
+      batch-size: 10
+      timeout: 5s
+    
+    weather:
+      enabled: false
+      base-url: http://localhost:8080/mock
+      api-key: test-key
+      poll-interval: 60000
+      timeout: 5s
+    
+    port-data:
+      enabled: false
+      base-url: http://localhost:8080/mock
+      api-key: test-key
+      poll-interval: 60000
+      timeout: 5s
+
+# Disable scheduling in tests
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics
+
+logging:
+  level:
+    com.kreasipositif.vms: DEBUG
+    org.springframework.kafka: WARN
+    org.apache.kafka: WARN

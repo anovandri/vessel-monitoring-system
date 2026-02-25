@@ -1,0 +1,551 @@
+@startuml VMS-Database-Schema
+!theme plain
+
+title VMS Database Schema - PostgreSQL + PostGIS + ClickHouse
+
+skinparam linetype ortho
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontName Inter
+
+' ===== POSTGRESQL SCHEMA =====
+package "PostgreSQL + PostGIS (Operational Data)" {
+    
+    entity "vessels" as VESSEL {
+        * mmsi : INTEGER <<PK>>
+        --
+        imo_number : VARCHAR(10)
+        vessel_name : VARCHAR(255)
+        call_sign : VARCHAR(20)
+        vessel_type : INTEGER
+        vessel_type_name : VARCHAR(100)
+        flag_country : VARCHAR(2)
+        length : DECIMAL(6,2)
+        width : DECIMAL(6,2)
+        draught : DECIMAL(5,2)
+        destination : VARCHAR(255)
+        eta : TIMESTAMP
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        --
+        INDEX idx_vessel_name
+        INDEX idx_vessel_type
+        INDEX idx_flag_country
+    }
+    
+    entity "vessel_positions" as POSITION {
+        * id : BIGSERIAL <<PK>>
+        --
+        * mmsi : INTEGER <<FK>>
+        latitude : DECIMAL(10,7)
+        longitude : DECIMAL(10,7)
+        * location : GEOMETRY(Point, 4326)
+        speed : DECIMAL(5,2)
+        course : DECIMAL(5,2)
+        heading : INTEGER
+        navigation_status : INTEGER
+        timestamp : TIMESTAMP
+        received_at : TIMESTAMP
+        --
+        INDEX idx_mmsi
+        INDEX idx_timestamp
+        SPATIAL INDEX gist_location
+        INDEX idx_received_at
+        PARTITION BY RANGE (timestamp)
+    }
+    
+    entity "geofences" as GEOFENCE {
+        * id : SERIAL <<PK>>
+        --
+        name : VARCHAR(255)
+        description : TEXT
+        * boundary : GEOMETRY(Polygon, 4326)
+        geofence_type : VARCHAR(50)
+        is_active : BOOLEAN
+        alert_on_entry : BOOLEAN
+        alert_on_exit : BOOLEAN
+        created_by : INTEGER
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        --
+        SPATIAL INDEX gist_boundary
+        INDEX idx_is_active
+    }
+    
+    entity "alerts" as ALERT {
+        * id : BIGSERIAL <<PK>>
+        --
+        mmsi : INTEGER <<FK>>
+        alert_type : VARCHAR(50)
+        severity : VARCHAR(20)
+        title : VARCHAR(255)
+        description : TEXT
+        metadata : JSONB
+        is_acknowledged : BOOLEAN
+        acknowledged_by : INTEGER
+        acknowledged_at : TIMESTAMP
+        created_at : TIMESTAMP
+        resolved_at : TIMESTAMP
+        --
+        INDEX idx_mmsi
+        INDEX idx_alert_type
+        INDEX idx_severity
+        INDEX idx_created_at
+        INDEX idx_is_acknowledged
+        GIN INDEX idx_metadata
+    }
+    
+    entity "users" as USER {
+        * id : SERIAL <<PK>>
+        --
+        username : VARCHAR(100) UNIQUE
+        email : VARCHAR(255) UNIQUE
+        password_hash : VARCHAR(255)
+        full_name : VARCHAR(255)
+        role : VARCHAR(50)
+        is_active : BOOLEAN
+        last_login : TIMESTAMP
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        --
+        INDEX idx_username
+        INDEX idx_email
+        INDEX idx_role
+    }
+    
+    entity "user_settings" as USER_SETTINGS {
+        * id : SERIAL <<PK>>
+        --
+        * user_id : INTEGER <<FK>>
+        map_center_lat : DECIMAL(10,7)
+        map_center_lon : DECIMAL(10,7)
+        map_zoom : INTEGER
+        theme : VARCHAR(20)
+        notification_preferences : JSONB
+        dashboard_layout : JSONB
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        --
+        INDEX idx_user_id
+        GIN INDEX idx_notification_preferences
+    }
+    
+    entity "alert_rules" as ALERT_RULE {
+        * id : SERIAL <<PK>>
+        --
+        rule_name : VARCHAR(255)
+        rule_type : VARCHAR(50)
+        conditions : JSONB
+        severity : VARCHAR(20)
+        is_active : BOOLEAN
+        created_by : INTEGER
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+        --
+        INDEX idx_rule_type
+        INDEX idx_is_active
+        GIN INDEX idx_conditions
+    }
+    
+    entity "vessel_tracks" as TRACK {
+        * id : BIGSERIAL <<PK>>
+        --
+        mmsi : INTEGER <<FK>>
+        * track_points : GEOMETRY(LineString, 4326)
+        start_time : TIMESTAMP
+        end_time : TIMESTAMP
+        total_distance : DECIMAL(10,2)
+        avg_speed : DECIMAL(5,2)
+        max_speed : DECIMAL(5,2)
+        created_at : TIMESTAMP
+        --
+        INDEX idx_mmsi
+        INDEX idx_start_time
+        INDEX idx_end_time
+        SPATIAL INDEX gist_track_points
+    }
+}
+
+' ===== CLICKHOUSE SCHEMA =====
+package "ClickHouse (Time-Series Analytics)" {
+    
+    entity "vessel_tracks_history" as CH_TRACKS {
+        * timestamp : DateTime64(3) <<ORDER BY>>
+        * mmsi : UInt32
+        --
+        latitude : Float64
+        longitude : Float64
+        speed : Float32
+        course : Float32
+        heading : UInt16
+        navigation_status : UInt8
+        vessel_type : UInt8
+        flag_country : String
+        --
+        ENGINE = ReplicatedMergeTree
+        PARTITION BY toYYYYMM(timestamp)
+        ORDER BY (mmsi, timestamp)
+        TTL timestamp + INTERVAL 2 YEAR
+        SETTINGS index_granularity = 8192
+    }
+    
+    entity "alert_history" as CH_ALERTS {
+        * timestamp : DateTime64(3) <<ORDER BY>>
+        * alert_id : UInt64
+        --
+        mmsi : UInt32
+        alert_type : String
+        severity : String
+        latitude : Float64
+        longitude : Float64
+        metadata : String
+        --
+        ENGINE = ReplicatedMergeTree
+        PARTITION BY toYYYYMM(timestamp)
+        ORDER BY (timestamp, mmsi)
+        TTL timestamp + INTERVAL 1 YEAR
+    }
+    
+    entity "traffic_statistics" as CH_STATS {
+        * date : Date <<ORDER BY>>
+        * hour : UInt8
+        * region_id : UInt32
+        --
+        vessel_count : UInt32
+        message_count : UInt64
+        avg_speed : Float32
+        vessel_types : String
+        --
+        ENGINE = SummingMergeTree
+        PARTITION BY toYYYYMM(date)
+        ORDER BY (date, hour, region_id)
+        TTL date + INTERVAL 5 YEAR
+    }
+    
+    entity "position_aggregates_1min" as CH_AGG_1M {
+        * timestamp : DateTime <<ORDER BY>>
+        * mmsi : UInt32
+        --
+        avg_latitude : Float64
+        avg_longitude : Float64
+        avg_speed : Float32
+        min_speed : Float32
+        max_speed : Float32
+        message_count : UInt32
+        --
+        ENGINE = AggregatingMergeTree
+        PARTITION BY toYYYYMMDD(timestamp)
+        ORDER BY (mmsi, timestamp)
+        TTL timestamp + INTERVAL 90 DAY
+    }
+}
+
+' ===== REDIS CACHE SCHEMA =====
+package "Redis (Cache & Pub/Sub)" {
+    
+    note as REDIS_STRUCTURE
+        **Key Structures**
+        
+        # Latest vessel positions (Hash)
+        vessel:position:{mmsi} -> {
+          lat: "1.234567",
+          lon: "103.123456",
+          speed: "12.5",
+          course: "145",
+          timestamp: "2024-01-15T10:30:00Z"
+        }
+        TTL: 1 hour
+        
+        # Vessel search autocomplete (Sorted Set)
+        vessel:search:names -> [
+          {score: 0, member: "maersk atlanta"},
+          {score: 0, member: "ever given"},
+          ...
+        ]
+        
+        # Active alerts (List)
+        alerts:active -> [
+          {alertId: 123, mmsi: 456, type: "SPEED_ANOMALY", ...},
+          {alertId: 124, mmsi: 789, type: "GEOFENCE_ENTRY", ...}
+        ]
+        TTL: 24 hours
+        
+        # User sessions (String)
+        session:{sessionId} -> {userId: 123, ...}
+        TTL: 30 minutes
+        
+        # Geofence cache (Hash)
+        geofence:{id} -> {name: "...", boundary: "..."}
+        TTL: 1 hour
+        
+        # Dashboard statistics (String)
+        stats:dashboard -> {totalVessels: 1234, ...}
+        TTL: 1 minute
+        
+        **Pub/Sub Channels**
+        
+        # Real-time position updates
+        channel:positions -> publish vessel positions
+        
+        # Alert notifications
+        channel:alerts -> publish new alerts
+        
+        # Statistics updates
+        channel:statistics -> publish dashboard stats
+    end note
+}
+
+' ===== ELASTICSEARCH SCHEMA =====
+package "Elasticsearch (Full-Text Search)" {
+    
+    note as ES_INDICES
+        **Index: vessels**
+        ```json
+        {
+          "mappings": {
+            "properties": {
+              "mmsi": {"type": "integer"},
+              "vessel_name": {
+                "type": "text",
+                "fields": {
+                  "keyword": {"type": "keyword"},
+                  "suggest": {"type": "completion"}
+                }
+              },
+              "imo_number": {"type": "keyword"},
+              "vessel_type": {"type": "keyword"},
+              "flag_country": {"type": "keyword"},
+              "current_position": {"type": "geo_point"},
+              "last_updated": {"type": "date"}
+            }
+          },
+          "settings": {
+            "number_of_shards": 3,
+            "number_of_replicas": 2
+          }
+        }
+        ```
+        
+        **Index: alerts**
+        ```json
+        {
+          "mappings": {
+            "properties": {
+              "alert_id": {"type": "long"},
+              "mmsi": {"type": "integer"},
+              "alert_type": {"type": "keyword"},
+              "severity": {"type": "keyword"},
+              "title": {"type": "text"},
+              "description": {"type": "text"},
+              "location": {"type": "geo_point"},
+              "timestamp": {"type": "date"},
+              "metadata": {"type": "object", "enabled": false}
+            }
+          }
+        }
+        ```
+        
+        **Index: logs**
+        ```json
+        {
+          "mappings": {
+            "properties": {
+              "@timestamp": {"type": "date"},
+              "level": {"type": "keyword"},
+              "service": {"type": "keyword"},
+              "message": {"type": "text"},
+              "trace_id": {"type": "keyword"},
+              "user_id": {"type": "integer"}
+            }
+          }
+        }
+        ```
+    end note
+}
+
+' ===== RELATIONSHIPS =====
+VESSEL ||--o{ POSITION : "has positions"
+VESSEL ||--o{ ALERT : "has alerts"
+VESSEL ||--o{ TRACK : "has tracks"
+USER ||--|| USER_SETTINGS : "has settings"
+USER ||--o{ ALERT : "acknowledges"
+USER ||--o{ GEOFENCE : "creates"
+USER ||--o{ ALERT_RULE : "creates"
+
+POSITION ..> CH_TRACKS : "archived to"
+ALERT ..> CH_ALERTS : "archived to"
+POSITION ..> CH_AGG_1M : "aggregated to"
+
+note right of VESSEL
+  **Vessel Table Design**
+  
+  - Primary key: MMSI (9-digit identifier)
+  - Indexes for fast lookups by name, type, country
+  - Updated when master data changes
+  - ~500K active vessels globally
+  
+  **Query Examples:**
+  
+  ```sql
+  -- Find vessels by name
+  SELECT * FROM vessels
+  WHERE vessel_name ILIKE '%maersk%'
+  LIMIT 20;
+  
+  -- Get vessel details
+  SELECT * FROM vessels
+  WHERE mmsi = 367123456;
+  ```
+end note
+
+note right of POSITION
+  **Position Table Design**
+  
+  - Time-series partitioning (monthly)
+  - PostGIS GEOMETRY type for spatial queries
+  - Spatial index (GIST) for location-based queries
+  - Keep last 30 days in PostgreSQL
+  - Older data archived to ClickHouse
+  
+  **Partitioning:**
+  ```sql
+  CREATE TABLE vessel_positions_2024_01
+  PARTITION OF vessel_positions
+  FOR VALUES FROM ('2024-01-01') TO ('2024-02-01');
+  ```
+  
+  **Spatial Queries:**
+  ```sql
+  -- Find vessels within bounds
+  SELECT mmsi, latitude, longitude
+  FROM vessel_positions
+  WHERE location && ST_MakeEnvelope(
+    103.0, 1.0, 104.0, 2.0, 4326
+  )
+  AND timestamp > NOW() - INTERVAL '1 hour';
+  
+  -- Find vessels near a point
+  SELECT mmsi, 
+         ST_Distance(location::geography,
+           ST_Point(103.8198, 1.3521)::geography
+         ) / 1000 as distance_km
+  FROM vessel_positions
+  WHERE timestamp > NOW() - INTERVAL '1 hour'
+  ORDER BY location <-> 
+    ST_Point(103.8198, 1.3521)::geography
+  LIMIT 10;
+  ```
+end note
+
+note right of CH_TRACKS
+  **ClickHouse Design**
+  
+  - Columnar storage for analytics
+  - Partition by month for efficient queries
+  - 100:1 compression ratio
+  - TTL for automatic data expiration
+  - Distributed across 3+ shards
+  
+  **Query Examples:**
+  
+  ```sql
+  -- Get vessel track history
+  SELECT 
+    timestamp, latitude, longitude,
+    speed, course
+  FROM vessel_tracks_history
+  WHERE mmsi = 367123456
+    AND timestamp BETWEEN 
+      '2024-01-01' AND '2024-01-31'
+  ORDER BY timestamp;
+  
+  -- Traffic statistics
+  SELECT 
+    toDate(timestamp) as date,
+    count(*) as messages,
+    countDistinct(mmsi) as vessels,
+    avg(speed) as avg_speed
+  FROM vessel_tracks_history
+  WHERE timestamp >= today() - 7
+  GROUP BY date
+  ORDER BY date;
+  
+  -- Vessel density by region
+  SELECT 
+    floor(latitude / 0.1) * 0.1 as lat_grid,
+    floor(longitude / 0.1) * 0.1 as lon_grid,
+    countDistinct(mmsi) as vessel_count
+  FROM vessel_tracks_history
+  WHERE timestamp >= now() - INTERVAL 1 HOUR
+  GROUP BY lat_grid, lon_grid
+  HAVING vessel_count > 5
+  ORDER BY vessel_count DESC;
+  ```
+  
+  **Performance:**
+  - Query 10M records in 1-2 seconds
+  - Aggregation over billions of rows
+  - Real-time materialized views
+end note
+
+note bottom of GEOFENCE
+  **Geofence Design**
+  
+  - PostGIS Polygon geometry
+  - Spatial index for containment checks
+  - Support complex polygons with holes
+  
+  **Query Example:**
+  
+  ```sql
+  -- Check if vessel is in geofence
+  SELECT g.id, g.name, g.alert_on_entry
+  FROM geofences g
+  JOIN vessel_positions p ON
+    ST_Contains(g.boundary, p.location)
+  WHERE p.mmsi = 367123456
+    AND p.timestamp = (
+      SELECT MAX(timestamp)
+      FROM vessel_positions
+      WHERE mmsi = 367123456
+    )
+    AND g.is_active = true;
+  ```
+end note
+
+note bottom of ALERT
+  **Alert Design**
+  
+  - JSONB for flexible metadata
+  - GIN index on JSONB for fast queries
+  - Severity: INFO, WARNING, CRITICAL
+  - Auto-resolve after 24 hours if not acknowledged
+  
+  **Query Examples:**
+  
+  ```sql
+  -- Get active alerts
+  SELECT * FROM alerts
+  WHERE is_acknowledged = false
+    AND resolved_at IS NULL
+  ORDER BY 
+    CASE severity
+      WHEN 'CRITICAL' THEN 1
+      WHEN 'WARNING' THEN 2
+      ELSE 3
+    END,
+    created_at DESC;
+  
+  -- Alert statistics by type
+  SELECT 
+    alert_type,
+    count(*) as count,
+    count(*) FILTER (
+      WHERE severity = 'CRITICAL'
+    ) as critical_count
+  FROM alerts
+  WHERE created_at >= NOW() - INTERVAL '7 days'
+  GROUP BY alert_type;
+  ```
+end note
+
+@enduml

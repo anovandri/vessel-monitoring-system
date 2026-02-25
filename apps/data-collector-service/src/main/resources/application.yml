@@ -1,0 +1,106 @@
+spring:
+  application:
+    name: data-collector-service
+  
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      compression-type: snappy
+      batch-size: 16384
+      linger-ms: 10
+      buffer-memory: 33554432
+    properties:
+      max.in.flight.requests.per.connection: 5
+      enable.idempotence: true
+
+  # Jackson Configuration
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+# VMS Collector Configuration
+vms:
+  collector:
+    enabled: true
+    max-concurrent-collectors: 10
+    default-timeout: 30s
+    max-retries: 3
+    retry-delay: 5s
+    
+    # Collection schedule interval (milliseconds)
+    schedule:
+      interval: 10000  # 10 seconds
+    
+    # AIS Collector Configuration
+    ais:
+      enabled: true
+      base-url: ${AIS_API_URL:https://api.marinetraffic.com}
+      api-key: ${AIS_API_KEY:your-api-key-here}
+      poll-interval: 10s
+      batch-size: 100
+      additional-headers:
+        User-Agent: VMS-Data-Collector/1.0
+    
+    # Weather Collector Configuration
+    weather:
+      enabled: true
+      base-url: ${WEATHER_API_URL:https://api.openweathermap.org}
+      api-key: ${WEATHER_API_KEY:36d3404e8d326acdf34a6e5d1da66d7b}
+      poll-interval: 5m
+      units: metric
+    
+    # Port Data Collector Configuration
+    port-data:
+      enabled: true
+      base-url: ${PORT_API_URL:https://api.portdata.com}
+      api-key: ${PORT_API_KEY:your-api-key-here}
+      poll-interval: 10m
+      include-schedules: true
+
+# Server Configuration
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+
+# Management & Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      environment: ${ENVIRONMENT:development}
+    export:
+      prometheus:
+        enabled: true
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.kreasipositif.vms: DEBUG
+    org.springframework.kafka: INFO
+    org.springframework.web: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/data-collector-service.log
+    max-size: 10MB
+    max-history: 30

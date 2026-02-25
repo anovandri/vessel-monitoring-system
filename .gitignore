@@ -2,3 +2,14 @@
 .nx/installation
 .nx/cache
 .nx/workspace-data
+target
+.vscode
+.idea
+*.iml
+*.log
+*.tmp
+*.bak
+*.swp
+.DS_Store
+coverage
+jacoco.exec

@@ -1,0 +1,69 @@
+{
+  "name": "data-collector-service",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/data-collector-service/src",
+  "projectType": "application",
+  "tags": ["type:application", "platform:java", "scope:data-collection"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn clean package -DskipTests",
+        "cwd": "{workspaceRoot}/apps/data-collector-service"
+      },
+      "outputs": ["{workspaceRoot}/apps/data-collector-service/target"],
+      "cache": true
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn test",
+        "cwd": "{workspaceRoot}/apps/data-collector-service"
+      },
+      "cache": false
+    },
+    "integration-test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn verify",
+        "cwd": "{workspaceRoot}/apps/data-collector-service"
+      },
+      "cache": false
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn spring-boot:run",
+        "cwd": "{workspaceRoot}/apps/data-collector-service"
+      }
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn clean",
+        "cwd": "{workspaceRoot}/apps/data-collector-service"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn checkstyle:check",
+        "cwd": "{workspaceRoot}/apps/data-collector-service"
+      }
+    },
+    "coverage": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn test jacoco:report",
+        "cwd": "{workspaceRoot}/apps/data-collector-service"
+      }
+    },
+    "docker-build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn spring-boot:build-image -Dspring-boot.build-image.imageName=vms/data-collector-service:latest",
+        "cwd": "{workspaceRoot}/apps/data-collector-service"
+      }
+    }
+  }
+}
