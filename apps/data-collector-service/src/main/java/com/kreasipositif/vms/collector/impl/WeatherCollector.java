@@ -75,7 +75,9 @@ public class WeatherCollector extends DataCollector {
 
     @Override
     protected List<CollectedData> doCollect() throws Exception {
-        log.info("Collecting weather data...");
+        String apiKey = config.getWeather().getApiKey();
+        log.info("Collecting weather data... (API Key: {}...)", 
+                apiKey != null && apiKey.length() > 8 ? apiKey.substring(0, 8) : "MISSING");
         
         List<CollectedData> collectedData = new ArrayList<>();
         
@@ -100,14 +102,25 @@ public class WeatherCollector extends DataCollector {
     }
 
     private String fetchWeatherData(double lat, double lon) {
+        String apiKey = config.getWeather().getApiKey();
+        String baseUrl = config.getWeather().getBaseUrl();
+        String units = config.getWeather().getUnits();
+        
+        String url = String.format("%s/data/2.5/weather?lat=%s&lon=%s&appid=%s&units=%s",
+                baseUrl, lat, lon, apiKey, units);
+        log.info("Calling Weather API: {} (key: {}...)", 
+                url.replace(apiKey, apiKey.substring(0, 8) + "***"), 
+                apiKey.substring(0, 8));
+        
         return webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/data/2.5/weather")
                         .queryParam("lat", lat)
                         .queryParam("lon", lon)
-                        .queryParam("appid", config.getWeather().getApiKey())
-                        .queryParam("units", config.getWeather().getUnits())
+                        .queryParam("appid", apiKey)
+                        .queryParam("units", units)
                         .build())
+                .header("Accept", "application/json")
                 .retrieve()
                 .bodyToMono(String.class)
                 .timeout(config.getDefaultTimeout())

@@ -2,13 +2,14 @@ package com.kreasipositif.vms.collector.parser;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.kreasipositif.vms.collector.model.OpenWeatherMapResponse;
 import com.kreasipositif.vms.collector.model.WeatherData;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
  * Parser for weather data.
- * Converts JSON weather data into structured WeatherData objects.
+ * Converts JSON weather data from OpenWeatherMap API into structured WeatherData objects.
  */
 @Slf4j
 @Component
@@ -24,9 +25,13 @@ public class WeatherParser implements DataParser<WeatherData> {
     @Override
     public WeatherData parse(String rawData) throws ParsingException {
         try {
-            log.debug("Parsing weather data");
+            log.debug("Parsing weather data from OpenWeatherMap API");
             
-            WeatherData weather = objectMapper.readValue(rawData, WeatherData.class);
+            // First parse the OpenWeatherMap API response
+            OpenWeatherMapResponse response = objectMapper.readValue(rawData, OpenWeatherMapResponse.class);
+            
+            // Convert to internal WeatherData model
+            WeatherData weather = response.toWeatherData();
             
             if (!weather.isValid()) {
                 throw new ParsingException("Invalid weather data: missing required fields or invalid coordinates");

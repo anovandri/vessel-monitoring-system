@@ -46,11 +46,12 @@ public class AISCollector extends DataCollector {
         this.parser = parser;
         
         // Build WebClient with configuration
+        // NOTE: Do NOT use defaultHeader() for X-API-Key as it affects the shared builder
+        // Instead, add X-API-Key at request level in doCollect()
         this.webClient = webClientBuilder
                 .baseUrl(config.getAis().getBaseUrl())
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
-                .defaultHeader("X-API-Key", config.getAis().getApiKey())
                 .build();
         
         // Store metadata reference
@@ -88,6 +89,7 @@ public class AISCollector extends DataCollector {
                             .queryParam("limit", config.getAis().getBatchSize())
                             .queryParam("format", "json")
                             .build())
+                    .header("X-API-Key", config.getAis().getApiKey()) // Add X-API-Key at request level
                     .retrieve()
                     .bodyToMono(String.class)
                     .timeout(config.getDefaultTimeout())
