@@ -80,11 +80,14 @@ vms:
     
     # Port Data Collector Configuration
     port-data:
-      enabled: true
+      enabled: false  # Disable real port data API for demo
       base-url: ${PORT_API_URL:https://api.portdata.com}
       api-key: ${PORT_API_KEY:your-api-key-here}
       poll-interval: 10m
       include-schedules: true
+      # Mock mode for Indonesian maritime demo
+      mock:
+        enabled: true  # Enable mock port data generator
 
 # Server Configuration
 server:

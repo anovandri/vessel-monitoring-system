@@ -3,6 +3,7 @@ package com.kreasipositif.vms.collector.config;
 import com.kreasipositif.vms.collector.core.CollectorRegistry;
 import com.kreasipositif.vms.collector.impl.AISCollector;
 import com.kreasipositif.vms.collector.impl.MockAISCollector;
+import com.kreasipositif.vms.collector.impl.MockPortDataCollector;
 import com.kreasipositif.vms.collector.impl.PortDataCollector;
 import com.kreasipositif.vms.collector.impl.WeatherCollector;
 import com.kreasipositif.vms.collector.parser.AISParser;
@@ -33,6 +34,9 @@ public class CollectorBootstrap {
     
     @Autowired(required = false)
     private MockAISCollector mockAISCollector;
+    
+    @Autowired(required = false)
+    private MockPortDataCollector mockPortDataCollector;
     
     public CollectorBootstrap(
             CollectorRegistry collectorRegistry,
@@ -100,9 +104,17 @@ public class CollectorBootstrap {
             log.info("✅ Mock AIS Collector registered for Indonesian maritime demo");
         }
         
-        // Register weather and port data collectors
-        collectorRegistry.register(weatherCollector);
+        // Register real port data collector (disabled when mock is enabled)
         collectorRegistry.register(portDataCollector);
+        
+        // Register mock port data collector (only if enabled via configuration)
+        if (mockPortDataCollector != null) {
+            collectorRegistry.register(mockPortDataCollector);
+            log.info("✅ Mock Port Data Collector registered for Indonesian maritime demo");
+        }
+        
+        // Register weather collector
+        collectorRegistry.register(weatherCollector);
         
         log.info("Registered {} collectors", collectorRegistry.getCollectorCount());
     }
