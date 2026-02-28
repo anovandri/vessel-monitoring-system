@@ -30,15 +30,16 @@ public class WeatherCollector extends DataCollector {
     private final WeatherParser parser;
     private final CollectorMetadata metadata;
 
-    // South Asia and Indonesia maritime weather monitoring locations
+    // Weather monitoring locations for Indonesian maritime areas
+    // Major Indonesian ports and strategic maritime locations
     private static final List<Map<String, Double>> MONITORING_LOCATIONS = List.of(
-            Map.of("lat", -6.11, "lon", 106.89),  // Jakarta, Indonesia
-            Map.of("lat", -3.32, "lon", 114.59),  // Balikpapan, Indonesia
-            Map.of("lat", 1.45, "lon", 124.84),   // Bitung, Indonesia
-            Map.of("lat", -0.95, "lon", 100.35),  // Padang, Indonesia
-            Map.of("lat", -8.65, "lon", 115.22),  // Benoa (Bali), Indonesia
-            Map.of("lat", -5.45, "lon", 105.27),  // Panjang (Lampung), Indonesia
-            Map.of("lat", 3.59, "lon", 98.67)     // Belawan (Medan), Indonesia
+            Map.of("lat", -6.11, "lon", 106.89),   // Jakarta (Tanjung Priok Port)
+            Map.of("lat", -7.21, "lon", 112.74),   // Surabaya (Tanjung Perak Port)
+            Map.of("lat", -5.13, "lon", 119.43),   // Makassar (Soekarno-Hatta Port)
+            Map.of("lat", 1.15, "lon", 104.03),    // Batam (Singapore Strait)
+            Map.of("lat", 3.59, "lon", 98.67),     // Belawan/Medan
+            Map.of("lat", -8.75, "lon", 115.17),   // Benoa/Bali
+            Map.of("lat", -0.95, "lon", 100.35)    // Padang (West Sumatra)
     );
 
     public WeatherCollector(

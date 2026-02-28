@@ -1,5 +1,9 @@
 package com.kreasipositif.vms.collector.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kreasipositif.vms.collector.aisstream.AISStreamClient;
+import com.kreasipositif.vms.collector.aisstream.AISStreamMessage;
+import com.kreasipositif.vms.collector.aisstream.BoundingBox;
 import com.kreasipositif.vms.collector.core.CollectedData;
 import com.kreasipositif.vms.collector.core.CollectorConfig;
 import com.kreasipositif.vms.collector.core.CollectorMetadata;
@@ -7,12 +11,10 @@ import com.kreasipositif.vms.collector.core.DataCollector;
 import com.kreasipositif.vms.collector.model.AISMessage;
 import com.kreasipositif.vms.collector.parser.AISParser;
 import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -20,44 +22,73 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
- * AIS Data Collector using Java 21 Virtual Threads.
- * Collects vessel position data from AIS APIs.
+ * AIS Data Collector using AIS Stream WebSocket API.
+ * Collects real-time vessel position data from aisstream.io
  */
 @Slf4j
 @Component
 public class AISCollector extends DataCollector {
 
-    private final WebClient webClient;
     private final CollectorConfig config;
     private final AISParser parser;
     private final CollectorMetadata metadata;
+    private final ObjectMapper objectMapper;
+    private AISStreamClient streamClient;
 
     public AISCollector(
-            WebClient.Builder webClientBuilder,
             MeterRegistry meterRegistry,
             CollectorConfig config,
             AISParser parser) {
         
-        // Build metadata FIRST before calling super()
         super(meterRegistry, buildMetadata(config));
         this.config = config;
         this.parser = parser;
-        
-        // Build WebClient with configuration
-        // NOTE: Do NOT use defaultHeader() for X-API-Key as it affects the shared builder
-        // Instead, add X-API-Key at request level in doCollect()
-        this.webClient = webClientBuilder
-                .baseUrl(config.getAis().getBaseUrl())
-                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
-                .build();
-        
-        // Store metadata reference
         this.metadata = getMetadata();
+        this.objectMapper = new ObjectMapper();
         
-        log.info("AISCollector initialized with base URL: {}", config.getAis().getBaseUrl());
+        log.info("AISCollector initialized with WebSocket URL: {}", config.getAis().getWebsocketUrl());
+    }
+    
+    @PostConstruct
+    public void init() {
+        if (!config.getAis().isEnabled()) {
+            log.info("AIS Collector is disabled");
+            return;
+        }
+
+        try {
+            // Convert bounding boxes from config
+            List<BoundingBox> boxes = config.getAis().getBoundingBoxes().stream()
+                    .map(bb -> BoundingBox.fromCoordinates(bb.getName(), bb.getCoordinates()))
+                    .toList();
+
+            // Initialize WebSocket client
+            streamClient = new AISStreamClient(
+                    config.getAis().getWebsocketUrl(),
+                    config.getAis().getApiKey(),
+                    boxes,
+                    config.getAis().getMaxReconnectAttempts(),
+                    config.getAis().getReconnectDelay().toMillis()
+            );
+
+            // Connect to AIS Stream
+            streamClient.connect();
+            log.info("✅ AIS Stream client initialized and connected");
+            
+        } catch (Exception e) {
+            log.error("Failed to initialize AIS Stream client: {}", e.getMessage(), e);
+        }
+    }
+
+    @PreDestroy
+    public void cleanup() {
+        if (streamClient != null) {
+            streamClient.disconnect();
+            log.info("AIS Stream client disconnected");
+        }
     }
     
     private static CollectorMetadata buildMetadata(CollectorConfig config) {
@@ -76,36 +107,43 @@ public class AISCollector extends DataCollector {
 
     @Override
     protected List<CollectedData> doCollect() throws Exception {
-        log.info("Collecting AIS data from API...");
+        log.info("Collecting AIS data from WebSocket stream...");
         
         List<CollectedData> collectedData = new ArrayList<>();
         
+        if (streamClient == null || !streamClient.isConnected()) {
+            log.warn("AIS Stream client not connected");
+            return collectedData;
+        }
+        
         try {
-            // Make API call to fetch AIS data
-            // This is a simplified example - adjust endpoint and parameters as needed
-            String response = webClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/api/ais/positions")
-                            .queryParam("limit", config.getAis().getBatchSize())
-                            .queryParam("format", "json")
-                            .build())
-                    .header("X-API-Key", config.getAis().getApiKey()) // Add X-API-Key at request level
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(config.getDefaultTimeout())
-                    .onErrorResume(error -> {
-                        log.error("Error fetching AIS data: {}", error.getMessage());
-                        return Mono.just("[]"); // Return empty array on error
-                    })
-                    .block(); // Block is acceptable here as we're using Virtual Threads
+            // Poll messages from the queue for the poll interval duration
+            long endTime = System.currentTimeMillis() + config.getAis().getPollInterval().toMillis();
+            int maxMessages = config.getAis().getBatchSize();
             
-            if (response != null && !response.isBlank()) {
-                // Parse response - assuming it's a JSON array of AIS messages
-                collectedData.addAll(parseAISResponse(response));
+            while (System.currentTimeMillis() < endTime && collectedData.size() < maxMessages) {
+                String message = streamClient.pollMessage(1, TimeUnit.SECONDS);
+                
+                if (message != null) {
+                    CollectedData data = convertToCollectedData(message);
+                    if (data != null) {
+                        collectedData.add(data);
+                    }
+                } else {
+                    // No message received, continue polling
+                    if (collectedData.isEmpty()) {
+                        // Still waiting for first message
+                        Thread.sleep(100);
+                    }
+                }
             }
             
-            log.info("Collected {} AIS records", collectedData.size());
+            log.info("Collected {} AIS records from stream (queue size: {})", 
+                    collectedData.size(), streamClient.getQueueSize());
             
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("AIS collection interrupted");
         } catch (Exception e) {
             log.error("Failed to collect AIS data: {}", e.getMessage(), e);
             throw new CollectionException("AIS collection failed", e);
@@ -115,49 +153,36 @@ public class AISCollector extends DataCollector {
     }
 
     /**
-     * Parse AIS API response and convert to CollectedData
-     */
-    private List<CollectedData> parseAISResponse(String response) {
-        List<CollectedData> dataList = new ArrayList<>();
-        
-        try {
-            // Handle both single object and array responses
-            if (response.trim().startsWith("[")) {
-                // Array of AIS messages
-                String[] messages = extractJsonObjects(response);
-                for (String messageJson : messages) {
-                    CollectedData data = convertToCollectedData(messageJson);
-                    if (data != null) {
-                        dataList.add(data);
-                    }
-                }
-            } else {
-                // Single AIS message
-                CollectedData data = convertToCollectedData(response);
-                if (data != null) {
-                    dataList.add(data);
-                }
-            }
-        } catch (Exception e) {
-            log.error("Error parsing AIS response: {}", e.getMessage(), e);
-        }
-        
-        return dataList;
-    }
-
-    /**
      * Convert raw JSON to CollectedData
      */
     private CollectedData convertToCollectedData(String rawJson) {
         try {
-            // Parse using AISParser to validate
-            AISMessage aisMessage = parser.parse(rawJson);
+            // First parse as AIS Stream format
+            AISStreamMessage streamMessage = objectMapper.readValue(rawJson, AISStreamMessage.class);
+            
+            // Convert to internal AIS message format
+            AISMessage aisMessage = streamMessage.toAISMessage();
+            
+            // Validate the converted message
+            if (!aisMessage.isValid()) {
+                log.warn("Invalid AIS message after conversion: missing required fields");
+                return null;
+            }
             
             // Create metadata
             Map<String, String> metadata = new HashMap<>();
             metadata.put("mmsi", String.valueOf(aisMessage.getMmsi()));
             metadata.put("vessel_name", aisMessage.getVesselName());
-            metadata.put("navigation_status", aisMessage.getNavigationStatusDescription());
+            metadata.put("message_type", streamMessage.getMessageType());
+            if (aisMessage.getNavigationStatusDescription() != null) {
+                metadata.put("navigation_status", aisMessage.getNavigationStatusDescription());
+            }
+            
+            log.info("✅ Parsed AIS message - MMSI: {}, Vessel: {}, Position: {},{}", 
+                    aisMessage.getMmsi(), 
+                    aisMessage.getVesselName(),
+                    aisMessage.getLatitude(),
+                    aisMessage.getLongitude());
             
             return CollectedData.builder()
                     .dataType(CollectorMetadata.CollectorDataType.AIS_RAW)
@@ -167,11 +192,13 @@ public class AISCollector extends DataCollector {
                     .parsedData(aisMessage)
                     .metadata(metadata)
                     .qualityScore(calculateQualityScore(aisMessage))
-                    .source(config.getAis().getBaseUrl())
+                    .source(config.getAis().getWebsocketUrl())
                     .build();
                     
         } catch (Exception e) {
-            log.warn("Failed to convert AIS message to CollectedData: {}", e.getMessage());
+            log.warn("Failed to convert AIS Stream message: {}. Raw: {}", 
+                    e.getMessage(), 
+                    rawJson.substring(0, Math.min(200, rawJson.length())));
             return null;
         }
     }
@@ -250,9 +277,11 @@ public class AISCollector extends DataCollector {
 
     @Override
     public boolean isHealthy() {
-        // Check if collector is enabled and API is configured
+        // Check if collector is enabled, API key is configured, and WebSocket is connected
         return super.isHealthy() 
                 && config.getAis().getApiKey() != null
-                && !config.getAis().getApiKey().isBlank();
+                && !config.getAis().getApiKey().isBlank()
+                && streamClient != null
+                && streamClient.isConnected();
     }
 }

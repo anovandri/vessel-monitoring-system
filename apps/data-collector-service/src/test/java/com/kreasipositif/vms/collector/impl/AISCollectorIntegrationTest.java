@@ -32,8 +32,8 @@ class AISCollectorIntegrationTest {
 
         CollectorConfig config = new CollectorConfig();
         CollectorConfig.AisCollectorConfig aisConfig = new CollectorConfig.AisCollectorConfig();
-        aisConfig.setEnabled(true);
-        aisConfig.setBaseUrl(mockWebServer.url("/").toString());
+        aisConfig.setEnabled(false); // Disable to prevent WebSocket connection in tests
+        aisConfig.setWebsocketUrl(mockWebServer.url("/").toString());
         aisConfig.setApiKey("test-key");
         aisConfig.setPollInterval(Duration.ofMillis(10000L));
         aisConfig.setBatchSize(100);
@@ -41,10 +41,9 @@ class AISCollectorIntegrationTest {
 
         parser = new AISParser();
         
-        WebClient.Builder webClientBuilder = WebClient.builder();
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
         
-        collector = new AISCollector(webClientBuilder, meterRegistry, config, parser);
+        collector = new AISCollector(meterRegistry, config, parser);
     }
 
     @AfterEach

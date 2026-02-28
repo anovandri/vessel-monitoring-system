@@ -43,11 +43,20 @@ public class CollectorConfig {
     @Data
     public static class AisCollectorConfig {
         private boolean enabled = true;
-        private String baseUrl = "https://api.marinetraffic.com";
+        private String websocketUrl = "wss://stream.aisstream.io/v0/stream";
         private String apiKey;
-        private Duration pollInterval = Duration.ofSeconds(10);
+        private Duration pollInterval = Duration.ofSeconds(30);
         private int batchSize = 100;
+        private Duration reconnectDelay = Duration.ofSeconds(5);
+        private int maxReconnectAttempts = 10;
+        private java.util.List<BoundingBoxConfig> boundingBoxes = new java.util.ArrayList<>();
         private Map<String, String> additionalHeaders;
+    }
+
+    @Data
+    public static class BoundingBoxConfig {
+        private String name;
+        private double[][] coordinates; // [[minLon, minLat], [maxLon, maxLat]]
     }
 
     @Data

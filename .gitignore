@@ -13,3 +13,16 @@ target
 .DS_Store
 coverage
 jacoco.exec
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+application-local.yml
+**/application-local.yml
+
+# Docker volumes
+docker-data/
+kafka-data/
+zookeeper-data/
+zookeeper-log/

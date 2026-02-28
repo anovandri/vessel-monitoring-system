@@ -40,11 +40,33 @@ vms:
     
     # AIS Collector Configuration
     ais:
-      enabled: true
-      base-url: ${AIS_API_URL:https://api.marinetraffic.com}
-      api-key: ${AIS_API_KEY:your-api-key-here}
-      poll-interval: 10s
+      enabled: false  # Disable real AIS Stream for demo
+      websocket-url: ${AIS_STREAM_URL:wss://stream.aisstream.io/v0/stream}
+      api-key: ${AIS_API_KEY:your-ais-api-key-here}
+      poll-interval: 30s
       batch-size: 100
+      # Mock mode for Indonesian maritime demo
+      mock:
+        enabled: true  # Enable mock data generator
+      # Bounding boxes for Indonesian maritime areas (kept for reference)
+      # Coordinates format: [[longitude1, latitude1], [longitude2, latitude2]]
+      bounding-boxes:
+        - name: "Jakarta-Tanjung-Priok"
+          coordinates: [[106.7, -6.2], [107.0, -6.0]]
+        - name: "Surabaya-Tanjung-Perak"
+          coordinates: [[112.6, -7.3], [112.9, -7.1]]
+        - name: "Makassar-Port"
+          coordinates: [[119.3, -5.2], [119.5, -5.0]]
+        - name: "Batam-Singapore-Strait"
+          coordinates: [[103.9, 1.0], [104.2, 1.3]]
+        - name: "Belawan-Medan"
+          coordinates: [[98.6, 3.5], [98.8, 3.7]]
+        - name: "Benoa-Bali"
+          coordinates: [[115.1, -8.8], [115.3, -8.7]]
+        - name: "Padang-Port"
+          coordinates: [[100.3, -1.0], [100.5, -0.9]]
+      reconnect-delay: 5s
+      max-reconnect-attempts: 10
       additional-headers:
         User-Agent: VMS-Data-Collector/1.0
     
@@ -52,7 +74,7 @@ vms:
     weather:
       enabled: true
       base-url: ${WEATHER_API_URL:https://api.openweathermap.org}
-      api-key: ${WEATHER_API_KEY:your-api-key-here}
+      api-key: ${WEATHER_API_KEY:your-weather-api-key-here}
       poll-interval: 5m
       units: metric
     
