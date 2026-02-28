@@ -21,6 +21,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * WebSocket client for AIS Stream (aisstream.io)
  * Connects to AIS Stream WebSocket API and receives real-time vessel data
+ * 
+ * NOTE: This client is currently DISABLED in favor of MockAISDataGenerator for demo purposes.
+ * The real AIS Stream integration can be re-enabled by setting:
+ *   vms.collector.ais.enabled=true
+ *   vms.collector.ais.mock.enabled=false
+ * 
+ * @see com.kreasipositif.vms.collector.mock.MockAISDataGenerator for the mock implementation
+ * @see com.kreasipositif.vms.collector.impl.MockAISCollector for the mock collector
  */
 @Slf4j
 public class AISStreamClient extends TextWebSocketHandler {
@@ -57,7 +65,17 @@ public class AISStreamClient extends TextWebSocketHandler {
     }
 
     /**
-     * Connect to AIS Stream WebSocket
+     * Connect to AIS Stream WebSocket.
+     * 
+     * IMPORTANT: This method only establishes the WebSocket connection to the AIS Stream URL.
+     * The API key is NOT sent here. Authentication and subscription happen in two phases:
+     * 
+     * Phase 1 (THIS METHOD): Connect to wss://stream.aisstream.io/v0/stream
+     * Phase 2 (sendSubscription): Send API key + bounding boxes as JSON message
+     * 
+     * This is the standard AIS Stream API flow - connect first, then authenticate and subscribe.
+     * 
+     * @throws Exception if connection fails or times out after 30 seconds
      */
     public void connect() throws Exception {
         if (connected.get()) {
@@ -68,10 +86,12 @@ public class AISStreamClient extends TextWebSocketHandler {
         log.info("Connecting to AIS Stream at {}", websocketUrl);
         
         try {
+            // Phase 1: Establish WebSocket connection (no authentication yet)
             session = client.execute(this, websocketUrl).get(30, TimeUnit.SECONDS);
             connected.set(true);
             reconnectAttempts.set(0);
             log.info("✅ Connected to AIS Stream successfully");
+            // Phase 2 will happen automatically in afterConnectionEstablished() -> sendSubscription()
         } catch (Exception e) {
             log.error("Failed to connect to AIS Stream: {}", e.getMessage());
             throw e;
@@ -79,7 +99,10 @@ public class AISStreamClient extends TextWebSocketHandler {
     }
 
     /**
-     * Called after WebSocket connection is established
+     * Called after WebSocket connection is established.
+     * 
+     * This is automatically triggered by Spring WebSocket after connect() succeeds.
+     * Here we send the authentication and subscription message (Phase 2).
      */
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
@@ -87,12 +110,26 @@ public class AISStreamClient extends TextWebSocketHandler {
         this.session = session;
         connected.set(true);
         
-        // Send subscription message
+        // Phase 2: Send authentication and subscription message
         sendSubscription();
     }
 
     /**
-     * Send subscription message to AIS Stream
+     * Send subscription message to AIS Stream (Phase 2 of connection process).
+     * 
+     * This is where the API key is actually sent to authenticate and subscribe.
+     * The message format is:
+     * {
+     *   "APIKey": "your-api-key-here",
+     *   "BoundingBoxes": [[[lon1, lat1], [lon2, lat2]], ...]
+     * }
+     * 
+     * AIS Stream will respond with:
+     * - {"Message": "APIKey is valid"} if authentication succeeds
+     * - {"error": "..."} if authentication fails or key is invalid
+     * 
+     * After successful authentication, AIS Stream will start sending vessel position
+     * messages for vessels within the specified bounding boxes.
      */
     private void sendSubscription() throws IOException {
         if (session == null || !session.isOpen()) {
@@ -108,7 +145,7 @@ public class AISStreamClient extends TextWebSocketHandler {
                 ))
                 .toList();
 
-        // Create subscription message
+        // Create subscription message with API key
         var subscription = new SubscriptionMessage(apiKey, boxes);
         String json = objectMapper.writeValueAsString(subscription);
 
@@ -116,6 +153,7 @@ public class AISStreamClient extends TextWebSocketHandler {
                 boundingBoxes.size(), 
                 boundingBoxes.stream().map(BoundingBox::getName).toList());
         
+        // THIS is where the API key is sent - as a JSON message over the WebSocket
         session.sendMessage(new TextMessage(json));
     }
 
@@ -240,7 +278,25 @@ public class AISStreamClient extends TextWebSocketHandler {
     }
 
     /**
-     * Subscription message format for AIS Stream API
+     * Subscription message format for AIS Stream API.
+     * 
+     * This record defines the JSON structure sent to AIS Stream WebSocket to subscribe
+     * to vessel updates within specified geographic bounding boxes.
+     * 
+     * Structure:
+     * {
+     *   "APIKey": "your-api-key",
+     *   "BoundingBoxes": [
+     *     [[minLon, minLat], [maxLon, maxLat]],  // Box 1
+     *     [[minLon, minLat], [maxLon, maxLat]]   // Box 2
+     *   ]
+     * }
+     * 
+     * NOTE: Currently not used as the system is running with MockAISDataGenerator.
+     * This will be used when real AIS Stream integration is re-enabled.
+     * 
+     * @param APIKey The AIS Stream API key for authentication
+     * @param BoundingBoxes List of geographic areas to monitor (each area defined by min/max coordinates)
      */
     private record SubscriptionMessage(
             String APIKey,
