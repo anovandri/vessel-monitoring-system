@@ -78,6 +78,13 @@
             <artifactId>commons-lang3</artifactId>
         </dependency>
 
+        <!-- Dotenv for automatic .env file loading -->
+        <dependency>
+            <groupId>me.paulschwarz</groupId>
+            <artifactId>spring-dotenv</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+
         <!-- Guava -->
         <dependency>
             <groupId>com.google.guava</groupId>
