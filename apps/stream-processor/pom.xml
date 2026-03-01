@@ -130,6 +130,13 @@
             <version>4.4</version>
         </dependency>
 
+        <!-- Dotenv for automatic .env file loading -->
+        <dependency>
+            <groupId>io.github.cdimascio</groupId>
+            <artifactId>dotenv-java</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+
         <!-- Geospatial library for distance calculations -->
         <dependency>
             <groupId>org.locationtech.jts</groupId>

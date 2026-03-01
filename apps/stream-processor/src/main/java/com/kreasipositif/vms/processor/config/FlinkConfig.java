@@ -5,7 +5,7 @@ import lombok.Data;
 
 /**
  * Configuration for Flink stream processor.
- * Loaded from environment variables or configuration file.
+ * Loaded from environment variables, .env file, or uses defaults.
  */
 @Data
 @Builder
@@ -41,71 +41,38 @@ public class FlinkConfig {
     
     /**
      * Load configuration from environment variables with defaults.
+     * Uses DotenvConfig to support .env files for local development.
      */
     public static FlinkConfig fromEnvironment() {
         return FlinkConfig.builder()
             // Kafka
-            .kafkaBootstrapServers(getEnv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"))
-            .inputTopic(getEnv("KAFKA_INPUT_TOPIC", "ais-raw-data"))
-            .positionsTopic(getEnv("KAFKA_POSITIONS_TOPIC", "vessel-positions"))
-            .alertsTopic(getEnv("KAFKA_ALERTS_TOPIC", "vessel-alerts"))
+            .kafkaBootstrapServers(DotenvConfig.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"))
+            .inputTopic(DotenvConfig.get("KAFKA_INPUT_TOPIC", "ais-raw-data"))
+            .positionsTopic(DotenvConfig.get("KAFKA_POSITIONS_TOPIC", "vessel-positions"))
+            .alertsTopic(DotenvConfig.get("KAFKA_ALERTS_TOPIC", "vessel-alerts"))
             
             // Flink
-            .parallelism(getEnvInt("FLINK_PARALLELISM", 4))
-            .checkpointingEnabled(getEnvBoolean("FLINK_CHECKPOINTING_ENABLED", true))
-            .checkpointInterval(getEnvLong("FLINK_CHECKPOINT_INTERVAL", 60000L))
-            .stateBackend(getEnv("FLINK_STATE_BACKEND", "hashmap"))
-            .checkpointDir(getEnv("FLINK_CHECKPOINT_DIR", "file:///tmp/flink-checkpoints"))
+            .parallelism(DotenvConfig.getInt("FLINK_PARALLELISM", 4))
+            .checkpointingEnabled(DotenvConfig.getBoolean("FLINK_CHECKPOINTING_ENABLED", true))
+            .checkpointInterval(DotenvConfig.getLong("FLINK_CHECKPOINT_INTERVAL", 60000L))
+            .stateBackend(DotenvConfig.get("FLINK_STATE_BACKEND", "hashmap"))
+            .checkpointDir(DotenvConfig.get("FLINK_CHECKPOINT_DIR", "file:///tmp/flink-checkpoints"))
             
             // PostgreSQL
-            .postgresUrl(getEnv("POSTGRES_URL", "jdbc:postgresql://localhost:5432/vms"))
-            .postgresUsername(getEnv("POSTGRES_USERNAME", "postgres"))
-            .postgresPassword(getEnv("POSTGRES_PASSWORD", "postgres"))
+            .postgresUrl(DotenvConfig.get("POSTGRES_URL", "jdbc:postgresql://localhost:5432/vms"))
+            .postgresUsername(DotenvConfig.get("POSTGRES_USERNAME", "postgres"))
+            .postgresPassword(DotenvConfig.get("POSTGRES_PASSWORD", "postgres"))
             
             // ClickHouse
-            .clickhouseUrl(getEnv("CLICKHOUSE_URL", "jdbc:clickhouse://localhost:8123/vms"))
-            .clickhouseUsername(getEnv("CLICKHOUSE_USERNAME", "default"))
-            .clickhousePassword(getEnv("CLICKHOUSE_PASSWORD", ""))
+            .clickhouseUrl(DotenvConfig.get("CLICKHOUSE_URL", "jdbc:clickhouse://localhost:8123/vms"))
+            .clickhouseUsername(DotenvConfig.get("CLICKHOUSE_USERNAME", "default"))
+            .clickhousePassword(DotenvConfig.get("CLICKHOUSE_PASSWORD", ""))
             
             // Redis
-            .redisHost(getEnv("REDIS_HOST", "localhost"))
-            .redisPort(getEnvInt("REDIS_PORT", 6379))
-            .redisPassword(getEnv("REDIS_PASSWORD", ""))
+            .redisHost(DotenvConfig.get("REDIS_HOST", "localhost"))
+            .redisPort(DotenvConfig.getInt("REDIS_PORT", 6379))
+            .redisPassword(DotenvConfig.get("REDIS_PASSWORD", ""))
             
             .build();
-    }
-    
-    private static String getEnv(String key, String defaultValue) {
-        String value = System.getenv(key);
-        return value != null && !value.isEmpty() ? value : defaultValue;
-    }
-    
-    private static int getEnvInt(String key, int defaultValue) {
-        String value = System.getenv(key);
-        if (value != null && !value.isEmpty()) {
-            try {
-                return Integer.parseInt(value);
-            } catch (NumberFormatException e) {
-                return defaultValue;
-            }
-        }
-        return defaultValue;
-    }
-    
-    private static long getEnvLong(String key, long defaultValue) {
-        String value = System.getenv(key);
-        if (value != null && !value.isEmpty()) {
-            try {
-                return Long.parseLong(value);
-            } catch (NumberFormatException e) {
-                return defaultValue;
-            }
-        }
-        return defaultValue;
-    }
-    
-    private static boolean getEnvBoolean(String key, boolean defaultValue) {
-        String value = System.getenv(key);
-        return value != null && !value.isEmpty() ? Boolean.parseBoolean(value) : defaultValue;
     }
 }
