@@ -67,13 +67,6 @@
             <version>3.0.2-1.18</version>
         </dependency>
 
-        <!-- Flink JDBC Connector -->
-        <dependency>
-            <groupId>org.apache.flink</groupId>
-            <artifactId>flink-connector-jdbc</artifactId>
-            <version>3.1.2-1.18</version>
-        </dependency>
-
         <!-- Flink State Backend - RocksDB -->
         <dependency>
             <groupId>org.apache.flink</groupId>
@@ -97,26 +90,6 @@
         <dependency>
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>
-        </dependency>
-
-        <!-- PostgreSQL Driver -->
-        <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-        </dependency>
-
-        <!-- ClickHouse JDBC Driver -->
-        <dependency>
-            <groupId>com.clickhouse</groupId>
-            <artifactId>clickhouse-jdbc</artifactId>
-            <version>0.6.0</version>
-            <classifier>http</classifier>
-        </dependency>
-
-        <!-- Redis Client (Lettuce) -->
-        <dependency>
-            <groupId>io.lettuce</groupId>
-            <artifactId>lettuce-core</artifactId>
         </dependency>
 
         <!-- Lombok -->

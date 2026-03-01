@@ -183,9 +183,6 @@ public class StreamProcessorJob {
             .name("Kafka Sink (vessel-alerts)")
             .uid("kafka-sink-alerts");
         
-        // ===== STEP 6: Database Sinks =====
-        // TODO: Add PostgreSQL, ClickHouse, Redis sinks
-        
         // ===== Execute =====
         LOG.info("▶️  Executing Flink job...");
         env.execute("VMS Stream Processor");
