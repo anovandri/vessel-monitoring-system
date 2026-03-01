@@ -83,9 +83,28 @@ public class StreamProcessorJob {
         DataStream<AISMessage> rawStream = env
             .fromSource(kafkaSource, WatermarkStrategy
                 .<AISMessage>forBoundedOutOfOrderness(Duration.ofSeconds(5))
-                .withTimestampAssigner((msg, timestamp) -> 
-                    msg.getTimestamp() != null ? msg.getTimestamp().toEpochMilli() : System.currentTimeMillis()
-                ),
+                .withTimestampAssigner((msg, timestamp) -> {
+                    // IMPORTANT: Never fallback to System.currentTimeMillis() as it can:
+                    // 1. Advance watermarks prematurely and close windows early
+                    // 2. Cause valid events to be dropped as "late"
+                    // 3. Break event-time semantics
+                    
+                    if (msg.getTimestamp() != null) {
+                        return msg.getTimestamp().toEpochMilli();
+                    }
+                    
+                    // For messages without timestamp, use Kafka record timestamp (producer time)
+                    // This maintains chronological order and doesn't skip ahead
+                    if (timestamp > 0) {
+                        LOG.debug("Using Kafka record timestamp for MMSI={}", msg.getMmsi());
+                        return timestamp;
+                    }
+                    
+                    // Last resort: use a sentinel value that will be filtered out in validation
+                    // This ensures the watermark doesn't advance incorrectly
+                    LOG.warn("Message without timestamp detected: MMSI={}", msg.getMmsi());
+                    return Long.MIN_VALUE; // Will be caught by validation as invalid
+                }),
                 "Kafka Source (ais-raw-data)"
             );
         

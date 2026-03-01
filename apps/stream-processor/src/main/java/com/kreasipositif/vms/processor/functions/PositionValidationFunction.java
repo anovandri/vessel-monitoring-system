@@ -45,22 +45,35 @@ public class PositionValidationFunction extends ProcessFunction<AISMessage, AISM
             return;
         }
         
-        // Validate timestamp (not in future, not too old)
-        if (message.getTimestamp() != null) {
-            long now = System.currentTimeMillis();
-            long messageTime = message.getTimestamp().toEpochMilli();
-            
-            if (messageTime > now + 60000) { // More than 1 minute in future
-                LOG.debug("Future timestamp for MMSI {}: {}", message.getMmsi(), message.getTimestamp());
-                ctx.output(invalidMessagesTag, message);
-                return;
-            }
-            
-            if (messageTime < now - 3600000) { // More than 1 hour old
-                LOG.debug("Old timestamp for MMSI {}: {}", message.getMmsi(), message.getTimestamp());
-                ctx.output(invalidMessagesTag, message);
-                return;
-            }
+        // Validate timestamp exists and is reasonable
+        if (message.getTimestamp() == null) {
+            LOG.debug("Missing timestamp for MMSI {}", message.getMmsi());
+            ctx.output(invalidMessagesTag, message);
+            return;
+        }
+        
+        long now = System.currentTimeMillis();
+        long messageTime = message.getTimestamp().toEpochMilli();
+        
+        // Check for sentinel value from timestamp assigner (indicates missing timestamp)
+        if (messageTime == Long.MIN_VALUE) {
+            LOG.debug("Invalid timestamp (sentinel) for MMSI {}", message.getMmsi());
+            ctx.output(invalidMessagesTag, message);
+            return;
+        }
+        
+        // Not in future (allow small clock drift - 1 minute)
+        if (messageTime > now + 60000) {
+            LOG.debug("Future timestamp for MMSI {}: {}", message.getMmsi(), message.getTimestamp());
+            ctx.output(invalidMessagesTag, message);
+            return;
+        }
+        
+        // Not too old (more than 1 hour is suspicious for real-time AIS)
+        if (messageTime < now - 3600000) {
+            LOG.debug("Old timestamp for MMSI {}: {}", message.getMmsi(), message.getTimestamp());
+            ctx.output(invalidMessagesTag, message);
+            return;
         }
         
         // Valid message - pass through
