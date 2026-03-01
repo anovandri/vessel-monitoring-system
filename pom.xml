@@ -16,6 +16,7 @@
     <modules>
         <module>apps/data-collector-service</module>
         <module>apps/stream-processor</module>
+        <module>apps/data-persistence-service</module>
     </modules>
 
     <properties>

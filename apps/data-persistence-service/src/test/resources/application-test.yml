@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: data-persistence-service-test
+  
+  # H2 for testing
+  datasource:
+    url: jdbc:h2:mem:testdb
+    username: sa
+    password: 
+    driver-class-name: org.h2.Driver
+  
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+  
+  # Embedded Kafka for testing
+  kafka:
+    bootstrap-servers: ${spring.embedded.kafka.brokers}
+    consumer:
+      group-id: test-consumer-group
+      auto-offset-reset: earliest
+  
+  # Embedded Redis for testing
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+# Test configuration
+kafka:
+  topics:
+    vessel-positions: test-vessel-positions
+    vessel-alerts: test-vessel-alerts
+    weather-data: test-weather-data
+    port-data: test-port-data
+
+# Disable ClickHouse and Elasticsearch in tests
+clickhouse:
+  url: jdbc:clickhouse://localhost:8123/default
+  username: default
+  password: 
+
+elasticsearch:
+  host: localhost
+  port: 9200
+  scheme: http
