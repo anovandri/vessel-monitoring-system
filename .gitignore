@@ -14,6 +14,9 @@ target
 coverage
 jacoco.exec
 
+# Maven Shade Plugin generated files
+dependency-reduced-pom.xml
+
 # Environment variables and secrets
 .env
 .env.local

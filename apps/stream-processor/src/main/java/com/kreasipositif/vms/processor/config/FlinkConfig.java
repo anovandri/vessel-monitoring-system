@@ -3,13 +3,17 @@ package com.kreasipositif.vms.processor.config;
 import lombok.Builder;
 import lombok.Data;
 
+import java.io.Serializable;
+
 /**
  * Configuration for Flink stream processor.
  * Loaded from environment variables, .env file, or uses defaults.
  */
 @Data
 @Builder
-public class FlinkConfig {
+public class FlinkConfig implements Serializable {
+    
+    private static final long serialVersionUID = 1L;
     
     // Kafka Configuration
     private String kafkaBootstrapServers;

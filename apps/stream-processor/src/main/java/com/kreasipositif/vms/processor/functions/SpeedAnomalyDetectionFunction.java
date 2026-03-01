@@ -137,11 +137,11 @@ public class SpeedAnomalyDetectionFunction extends KeyedProcessFunction<Long, En
                         "Vessel %s suddenly stopped from %.1f knots to %.1f knots",
                         current.getVesselName(), previousSpeed, currentSpeed
                     ))
-                    .details(Map.of(
+                    .details(new java.util.HashMap<>(Map.of(
                         "previous_speed", previousSpeed,
                         "current_speed", currentSpeed,
                         "speed_drop", previousSpeed - currentSpeed
-                    ))
+                    )))
                     .detectedAt(Instant.now())
                     .alertTime(current.getTimestamp())
                     .actionRequired(false)
@@ -186,11 +186,11 @@ public class SpeedAnomalyDetectionFunction extends KeyedProcessFunction<Long, En
                         "Vessel %s acceleration rate: %.2f knots/sec (likely GPS error)",
                         current.getVesselName(), acceleration
                     ))
-                    .details(Map.of(
+                    .details(new java.util.HashMap<>(Map.of(
                         "acceleration", acceleration,
                         "speed_change", speedChange,
                         "time_seconds", timeSeconds
-                    ))
+                    )))
                     .detectedAt(Instant.now())
                     .alertTime(current.getTimestamp())
                     .actionRequired(false)

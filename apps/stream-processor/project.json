@@ -31,9 +31,14 @@
     "run": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "mvn exec:java -Dexec.mainClass=com.kreasipositif.vms.processor.StreamProcessorJob",
-        "cwd": "apps/stream-processor"
-      }
+        "commands": [
+          "mvn package -DskipTests -q",
+          "java --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED -jar target/stream-processor-1.0.0-SNAPSHOT.jar"
+        ],
+        "cwd": "apps/stream-processor",
+        "parallel": false
+      },
+      "dependsOn": ["build"]
     },
     "run-local": {
       "executor": "nx:run-commands",

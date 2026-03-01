@@ -41,6 +41,25 @@
             <version>${flink.version}</version>
         </dependency>
 
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-runtime</artifactId>
+            <version>${flink.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-java</artifactId>
+            <version>${flink.version}</version>
+        </dependency>
+
+        <!-- Flink Connector Base (required for Kafka connector) -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-connector-base</artifactId>
+            <version>1.18.1</version>
+        </dependency>
+
         <!-- Flink Kafka Connector -->
         <dependency>
             <groupId>org.apache.flink</groupId>
@@ -216,8 +235,6 @@
                             <artifactSet>
                                 <excludes>
                                     <exclude>com.google.code.findbugs:jsr305</exclude>
-                                    <exclude>org.slf4j:*</exclude>
-                                    <exclude>log4j:*</exclude>
                                 </excludes>
                             </artifactSet>
                             <filters>
@@ -247,6 +264,19 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.3</version>
+            </plugin>
+
+            <!-- Exec Maven Plugin for running locally -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.6.3</version>
+                <configuration>
+                    <mainClass>com.kreasipositif.vms.processor.StreamProcessorJob</mainClass>
+                    <cleanupDaemonThreads>false</cleanupDaemonThreads>
+                    <includePluginDependencies>false</includePluginDependencies>
+                    <classpathScope>compile</classpathScope>
+                </configuration>
             </plugin>
         </plugins>
     </build>
