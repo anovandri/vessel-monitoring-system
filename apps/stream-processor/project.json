@@ -1,0 +1,81 @@
+{
+  "name": "stream-processor",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/stream-processor/src",
+  "projectType": "application",
+  "tags": ["type:application", "platform:jvm", "framework:flink"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn clean package -DskipTests",
+        "cwd": "apps/stream-processor"
+      },
+      "outputs": ["{projectRoot}/target"]
+    },
+    "compile": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn clean compile",
+        "cwd": "apps/stream-processor"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn test",
+        "cwd": "apps/stream-processor"
+      },
+      "outputs": ["{projectRoot}/target/surefire-reports"]
+    },
+    "run": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn exec:java -Dexec.mainClass=com.kreasipositif.vms.processor.StreamProcessorJob",
+        "cwd": "apps/stream-processor"
+      }
+    },
+    "run-local": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "source .env 2>/dev/null || true",
+          "mvn exec:java -Dexec.mainClass=com.kreasipositif.vms.processor.StreamProcessorJob"
+        ],
+        "cwd": "apps/stream-processor",
+        "parallel": false
+      }
+    },
+    "package": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn clean package",
+        "cwd": "apps/stream-processor"
+      },
+      "outputs": ["{projectRoot}/target/*.jar"],
+      "dependsOn": ["build"]
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn clean",
+        "cwd": "apps/stream-processor"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mvn checkstyle:check",
+        "cwd": "apps/stream-processor"
+      }
+    },
+    "deploy-flink": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "flink run -d target/stream-processor-1.0.0-SNAPSHOT.jar",
+        "cwd": "apps/stream-processor"
+      },
+      "dependsOn": ["package"]
+    }
+  }
+}
