@@ -2,11 +2,14 @@
 
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import { Plus, Minus, Layers, Share2, Ship, Bell, Check } from 'lucide-react';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import WeatherOverlay from './WeatherOverlay';
+import VesselOverlay from './VesselOverlay';
 import { WeatherData, getWeatherForBounds } from '@/lib/api/weather';
+import { useVesselWebSocket } from '@/lib/hooks/useVesselWebSocket';
+import { VesselPosition } from '@/lib/types/vessel';
 
 // Fix for default marker icon
 if (typeof window !== 'undefined') {
@@ -157,7 +160,32 @@ export default function MapView() {
   const [weatherData, setWeatherData] = useState<WeatherData[]>([]);
   const [mapBounds, setMapBounds] = useState<L.LatLngBounds | null>(null);
   const [isLoadingWeather, setIsLoadingWeather] = useState(false);
+  const [selectedVessel, setSelectedVessel] = useState<VesselPosition | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // WebSocket connection for real-time vessel updates
+  const { isConnected, positions: vesselPositions } = useVesselWebSocket({
+    enabled: overlays.vessels,
+    onPositionUpdate: (position) => {
+      console.log('Vessel position updated:', position.mmsi, position.vesselName);
+    },
+    onAlert: (alert) => {
+      console.log('Vessel alert received:', alert);
+      // TODO: Show alert notification
+    },
+    onConnect: () => {
+      console.log('Connected to vessel tracking WebSocket');
+    },
+    onDisconnect: () => {
+      console.log('Disconnected from vessel tracking WebSocket');
+    },
+  });
+
+  const handleVesselClick = (vessel: VesselPosition) => {
+    setSelectedVessel(vessel);
+    console.log('Vessel clicked:', vessel);
+    // TODO: Show vessel details panel
+  };
 
   // Fetch weather data when map bounds change (zoom/pan) or weather overlay is enabled
   // Uses debouncing to avoid excessive API calls during rapid map movements
@@ -253,6 +281,13 @@ export default function MapView() {
           />
         )}
         
+        {/* Vessel Overlay - Real-time vessel positions */}
+        <VesselOverlay 
+          vessels={vesselPositions} 
+          enabled={overlays.vessels}
+          onVesselClick={handleVesselClick}
+        />
+        
         {/* Weather Overlay */}
         <WeatherOverlay weatherData={weatherData} enabled={overlays.weather} />
         
@@ -261,6 +296,18 @@ export default function MapView() {
         
         <MapControls onLayersClick={() => setShowLayersPanel(!showLayersPanel)} />
       </MapContainer>
+
+      {/* WebSocket Connection Status */}
+      {overlays.vessels && (
+        <div className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-1000 px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-2 ${
+          isConnected 
+            ? 'bg-green-500/90 text-white' 
+            : 'bg-red-500/90 text-white animate-pulse'
+        }`}>
+          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-white' : 'bg-white/70'}`} />
+          {isConnected ? `Live: ${vesselPositions.length} vessels` : 'Connecting...'}
+        </div>
+      )}
 
       {/* Loading Indicator */}
       {isLoadingWeather && (

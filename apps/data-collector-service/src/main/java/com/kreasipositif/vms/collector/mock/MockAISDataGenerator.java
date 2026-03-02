@@ -3,17 +3,23 @@ package com.kreasipositif.vms.collector.mock;
 import com.kreasipositif.vms.collector.aisstream.AISStreamMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 /**
  * Mock AIS Data Generator for Indonesian Maritime Demo.
- * Generates realistic vessel data for major Indonesian shipping routes and ports.
+ * Loads vessel data from mock-vessels.txt file and generates realistic AIS messages.
+ * Vessels are positioned in actual shipping lanes: Malacca Strait, Java Sea, 
+ * Makassar Strait, Banda Sea, Celebes Sea, and Singapore Strait.
  */
 @Slf4j
 @Component
@@ -22,58 +28,68 @@ public class MockAISDataGenerator {
     private final ObjectMapper objectMapper;
     private final Random random = new Random();
     
-    // Indonesian vessel fleet for demo
-    private static final List<VesselTemplate> INDONESIAN_VESSELS = List.of(
-            // Container ships around Jakarta
-            new VesselTemplate(525000001L, "MERATUS MANADO", 220150001L, "YBAM", 70, 
-                    -6.11, 106.89, "Jakarta Area"),
-            new VesselTemplate(525000002L, "TANTO INTIM", 220150002L, "YBAK", 70,
-                    -6.11, 106.89, "Jakarta Area"),
-            new VesselTemplate(525000003L, "SAMUDERA INDONESIA", 220150003L, "YBAS", 70,
-                    -6.11, 106.89, "Jakarta Area"),
-            
-            // Container ships around Surabaya
-            new VesselTemplate(525000010L, "TEMAS LINE", 220150010L, "YBAU", 70,
-                    -7.21, 112.74, "Surabaya Area"),
-            new VesselTemplate(525000011L, "SPIL GEMILANG", 220150011L, "YBAV", 70,
-                    -7.21, 112.74, "Surabaya Area"),
-            
-            // Tankers around Balikpapan
-            new VesselTemplate(525000020L, "PERTAMINA GAS 1", 220150020L, "YBBP", 80,
-                    -1.25, 116.83, "Balikpapan Area"),
-            new VesselTemplate(525000021L, "PERTAMINA GAS 2", 220150021L, "YBBQ", 80,
-                    -1.25, 116.83, "Balikpapan Area"),
-            
-            // Cargo ships around Makassar
-            new VesselTemplate(525000030L, "PELNI TILONGKABILA", 220150030L, "YBMK", 79,
-                    -5.13, 119.43, "Makassar Area"),
-            new VesselTemplate(525000031L, "PELNI LEUSER", 220150031L, "YBML", 79,
-                    -5.13, 119.43, "Makassar Area"),
-            
-            // Container ships around Batam/Singapore Strait
-            new VesselTemplate(525000040L, "BATAM EXPRESS", 220150040L, "YBBT", 70,
-                    1.15, 104.03, "Batam/Singapore Strait"),
-            new VesselTemplate(525000041L, "RIAU CONTAINER", 220150041L, "YBBU", 70,
-                    1.15, 104.03, "Batam/Singapore Strait"),
-            new VesselTemplate(525000042L, "KEPRI SHIPPING", 220150042L, "YBBV", 70,
-                    1.15, 104.03, "Batam/Singapore Strait"),
-            
-            // Passenger ships around Bali
-            new VesselTemplate(525000050L, "GILICAT FAST FERRY", 220150050L, "YBBN", 60,
-                    -8.75, 115.17, "Benoa/Bali Area"),
-            new VesselTemplate(525000051L, "BALI HAI CRUISE", 220150051L, "YBBO", 60,
-                    -8.75, 115.17, "Benoa/Bali Area"),
-            
-            // Cargo ships around Belawan/Medan
-            new VesselTemplate(525000060L, "SUMATRA CARGO", 220150060L, "YBBW", 79,
-                    3.59, 98.67, "Belawan/Medan Area"),
-            new VesselTemplate(525000061L, "MEDAN LOGISTICS", 220150061L, "YBBX", 79,
-                    3.59, 98.67, "Belawan/Medan Area")
-    );
+    // Indonesian vessel fleet loaded from text file
+    private final List<VesselTemplate> INDONESIAN_VESSELS;
 
     public MockAISDataGenerator(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+        this.INDONESIAN_VESSELS = loadVesselsFromFile();
         log.info("Mock AIS Data Generator initialized with {} Indonesian vessels", INDONESIAN_VESSELS.size());
+    }
+
+    /**
+     * Load vessel templates from the mock-vessels.txt file
+     */
+    private List<VesselTemplate> loadVesselsFromFile() {
+        List<VesselTemplate> vessels = new ArrayList<>();
+        
+        try {
+            ClassPathResource resource = new ClassPathResource("mock-vessels.txt");
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
+                
+                vessels = reader.lines()
+                    .filter(line -> !line.trim().isEmpty() && !line.startsWith("#"))
+                    .map(this::parseVesselLine)
+                    .filter(vessel -> vessel != null)
+                    .collect(Collectors.toList());
+                
+                log.info("Successfully loaded {} vessels from mock-vessels.txt", vessels.size());
+            }
+        } catch (Exception e) {
+            log.error("Failed to load vessels from mock-vessels.txt: {}", e.getMessage(), e);
+            // Return empty list instead of crashing
+        }
+        
+        return vessels;
+    }
+
+    /**
+     * Parse a single vessel line from the text file
+     * Format: MMSI|Ship Name|IMO|Call Sign|Type Code|Latitude|Longitude|Area
+     */
+    private VesselTemplate parseVesselLine(String line) {
+        try {
+            String[] parts = line.split("\\|");
+            if (parts.length != 8) {
+                log.warn("Invalid vessel line format (expected 8 parts): {}", line);
+                return null;
+            }
+            
+            Long mmsi = Long.parseLong(parts[0].trim());
+            String shipName = parts[1].trim();
+            Long imoNumber = Long.parseLong(parts[2].trim());
+            String callSign = parts[3].trim();
+            Integer shipType = Integer.parseInt(parts[4].trim());
+            double baseLat = Double.parseDouble(parts[5].trim());
+            double baseLon = Double.parseDouble(parts[6].trim());
+            String area = parts[7].trim();
+            
+            return new VesselTemplate(mmsi, shipName, imoNumber, callSign, shipType, baseLat, baseLon, area);
+        } catch (Exception e) {
+            log.warn("Failed to parse vessel line: {} - Error: {}", line, e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -117,7 +133,8 @@ public class MockAISDataGenerator {
     }
 
     /**
-     * Create a realistic AIS message with vessel movement simulation
+     * Create a realistic AIS message with vessel movement simulation.
+     * Movement is constrained to stay in maritime areas.
      */
     private AISStreamMessage createRealisticMessage(VesselTemplate vessel) {
         AISStreamMessage message = new AISStreamMessage();
@@ -138,9 +155,10 @@ public class MockAISDataGenerator {
         // Create position report with realistic movement
         AISStreamMessage.PositionReport posReport = new AISStreamMessage.PositionReport();
         
-        // Add realistic random movement around base position (±0.1 degrees ~ ±11km)
-        double latOffset = (random.nextDouble() - 0.5) * 0.2;
-        double lonOffset = (random.nextDouble() - 0.5) * 0.2;
+        // Reduced random movement to stay in maritime areas (±0.05 degrees ~ ±5.5km)
+        // This keeps vessels in shipping lanes without drifting to land
+        double latOffset = (random.nextDouble() - 0.5) * 0.1;
+        double lonOffset = (random.nextDouble() - 0.5) * 0.1;
         posReport.setLatitude(vessel.baseLat + latOffset);
         posReport.setLongitude(vessel.baseLon + lonOffset);
         

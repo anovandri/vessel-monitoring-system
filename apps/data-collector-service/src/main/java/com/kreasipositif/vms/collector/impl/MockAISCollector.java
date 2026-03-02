@@ -44,13 +44,13 @@ public class MockAISCollector extends DataCollector {
         this.mockGenerator = mockGenerator;
         this.objectMapper = objectMapper;
         
-        // Generate 3-8 vessel updates per collection cycle
-        this.vesselsPerCollection = 3 + (int)(Math.random() * 6);
+        // Generate 10-15 vessel updates per collection cycle (batched to avoid WebSocket payload limits)
+        this.vesselsPerCollection = 10 + (int)(Math.random() * 6);
         
         log.info("🚢 Mock AIS Collector initialized for Indonesian maritime demo");
         log.info("📍 Monitoring areas: {}", mockGenerator.getMonitoredAreas());
         log.info("⚓ Fleet size: {} vessels", mockGenerator.getVesselCount());
-        log.info("📊 Vessels per collection: {}", vesselsPerCollection);
+        log.info("📊 Vessels per collection: {} (batched updates)", vesselsPerCollection);
     }
 
     private static CollectorMetadata buildMetadata(CollectorConfig config) {
