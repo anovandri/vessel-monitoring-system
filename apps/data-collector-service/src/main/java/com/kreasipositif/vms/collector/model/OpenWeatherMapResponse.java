@@ -66,9 +66,16 @@ public class OpenWeatherMapResponse {
      * Convert to internal WeatherData model
      */
     public WeatherData toWeatherData() {
+        double lat = coord != null ? coord.getLat() : 0.0;
+        double lon = coord != null ? coord.getLon() : 0.0;
+        
+        // Generate gridId from lat/lon (e.g., "10_1040" for lat=1.0, lon=104.0)
+        String gridId = generateGridId(lat, lon);
+        
         return WeatherData.builder()
-                .latitude(coord != null ? coord.getLat() : null)
-                .longitude(coord != null ? coord.getLon() : null)
+                .latitude(lat)
+                .longitude(lon)
+                .gridId(gridId)
                 .locationName(name)
                 .temperature(main != null ? main.getTemp() : null)
                 .feelsLike(main != null ? main.getFeelsLike() : null)
@@ -85,6 +92,15 @@ public class OpenWeatherMapResponse {
                 .timestamp(dt != null ? Instant.ofEpochSecond(dt) : Instant.now())
                 .source("OpenWeatherMap")
                 .build();
+    }
+    
+    /**
+     * Generate grid ID from coordinates (e.g., "10_1040" for lat=1.0, lon=104.0)
+     */
+    private String generateGridId(double lat, double lon) {
+        int latInt = (int) Math.round(lat * 10);  // 1.0 -> 10
+        int lonInt = (int) Math.round(lon * 10);  // 104.0 -> 1040
+        return latInt + "_" + lonInt;
     }
 
     @Data

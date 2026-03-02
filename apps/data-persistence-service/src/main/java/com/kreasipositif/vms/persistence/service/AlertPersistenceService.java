@@ -148,6 +148,9 @@ public class AlertPersistenceService {
                     String key = "vessel:alert:" + alertId;
                     redisTemplate.opsForValue().set(key, alert.toString(), Duration.ofHours(1));
                     
+                    // Publish to Redis channel for WebSocket broadcasting
+                    redisTemplate.convertAndSend("vessel-alerts-stream", alert.toString());
+                    
                     // Also maintain a set of active alerts per vessel
                     if (alert.has("mmsi") && !alert.get("mmsi").isNull()) {
                         String vesselKey = "vessel:alerts:" + alert.get("mmsi").asInt();
@@ -156,7 +159,7 @@ public class AlertPersistenceService {
                     }
                 }
             });
-            log.info("Cached {} alerts in Redis", alerts.size());
+            log.info("Cached {} alerts in Redis and published to WebSocket stream", alerts.size());
         } catch (Exception e) {
             log.error("Error caching alerts to Redis: {}", e.getMessage(), e);
             throw e;

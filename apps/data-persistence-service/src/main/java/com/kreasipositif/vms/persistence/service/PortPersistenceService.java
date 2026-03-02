@@ -54,6 +54,7 @@ public class PortPersistenceService {
 
     @Transactional
     public void persistPortData(List<JsonNode> portData) {
+        // Port data is queried via REST API, not pushed via WebSocket
         CompletableFuture<Void> postgresTask = CompletableFuture.runAsync(() -> 
             saveToPostgres(portData));
         
@@ -61,7 +62,7 @@ public class PortPersistenceService {
             saveToClickHouse(portData));
         
         CompletableFuture<Void> redisTask = CompletableFuture.runAsync(() -> 
-            saveToRedis(portData));
+            cacheToRedis(portData));
 
         CompletableFuture.allOf(postgresTask, clickhouseTask, redisTask).join();
     }
@@ -161,7 +162,7 @@ public class PortPersistenceService {
         }
     }
 
-    private void saveToRedis(List<JsonNode> portData) {
+    private void cacheToRedis(List<JsonNode> portData) {
         try {
             portData.forEach(port -> {
                 // Validate required fields before caching
@@ -172,16 +173,17 @@ public class PortPersistenceService {
                 
                 String operationId = port.get("operationId").asText();
                 String portId = port.get("portId").asText();
+                String jsonString = port.toString();
                 
                 String key = "port:operation:" + operationId;
-                redisTemplate.opsForValue().set(key, port.toString(), Duration.ofMinutes(10));
+                redisTemplate.opsForValue().set(key, jsonString, Duration.ofMinutes(10));
                 
-                // Also maintain active operations per port
+                // Also maintain active operations per port (for REST API queries)
                 String portKey = "port:active:" + portId;
                 redisTemplate.opsForSet().add(portKey, operationId);
                 redisTemplate.expire(portKey, Duration.ofMinutes(10));
             });
-            log.debug("Cached {} port operations in Redis", portData.size());
+            log.debug("Cached {} port operations in Redis (for REST API queries)", portData.size());
         } catch (Exception e) {
             log.error("Error caching port data to Redis: {}", e.getMessage(), e);
             throw e;

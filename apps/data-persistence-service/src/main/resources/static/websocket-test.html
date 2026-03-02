@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vessel Monitoring System - Real-time Updates</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .panel {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .panel h2 {
+            margin-top: 0;
+            color: #007bff;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .message {
+            background: #f8f9fa;
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 4px solid #007bff;
+            border-radius: 3px;
+            font-size: 12px;
+            word-wrap: break-word;
+        }
+        .message .timestamp {
+            color: #666;
+            font-size: 10px;
+        }
+        .counter {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-connect {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-disconnect {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-clear {
+            background-color: #6c757d;
+            color: white;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚢 Vessel Monitoring System - Real-time Updates</h1>
+        
+        <div>
+            <button id="connectBtn" class="btn-connect" onclick="connect()">Connect</button>
+            <button id="disconnectBtn" class="btn-disconnect" onclick="disconnect()" disabled>Disconnect</button>
+            <button class="btn-clear" onclick="clearAll()">Clear All</button>
+        </div>
+        
+        <div id="status" class="status disconnected">Disconnected</div>
+        
+        <div class="grid">
+            <div class="panel">
+                <h2>🚢 Vessel Positions <span id="vesselCount" class="counter">0</span></h2>
+                <div id="vesselMessages"></div>
+            </div>
+            
+            <div class="panel">
+                <h2>⚠️ Vessel Alerts <span id="alertCount" class="counter">0</span></h2>
+                <div id="alertMessages"></div>
+            </div>
+        </div>
+        
+        <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 8px;">
+            <h3>📡 REST API Endpoints (Weather & Port Data):</h3>
+            <ul style="list-style: none; padding-left: 0;">
+                <li>🌊 <strong>Weather:</strong> <code>GET /api/weather/grid/{gridId}</code></li>
+                <li>🌊 <strong>Nearby Weather:</strong> <code>GET /api/weather/nearby?lat=1.0&lon=104.0&radius=50</code></li>
+                <li>⚓ <strong>Port Operations:</strong> <code>GET /api/ports/{portId}/operations</code></li>
+                <li>⚓ <strong>Port Stats:</strong> <code>GET /api/ports/{portId}/stats</code></li>
+                <li>⚓ <strong>All Ports:</strong> <code>GET /api/ports/list</code></li>
+            </ul>
+            <p><em>Weather and port data updates are slow (10-30 min intervals), use REST API polling instead of WebSocket.</em></p>
+        </div>
+    </div>
+
+    <script>
+        let stompClient = null;
+        let counters = {
+            vessel: 0,
+            alert: 0
+        };
+
+        function connect() {
+            const socket = new SockJS('http://localhost:8082/ws');
+            stompClient = Stomp.over(socket);
+            
+            stompClient.connect({}, function (frame) {
+                console.log('Connected: ' + frame);
+                updateStatus(true);
+                
+                // Subscribe to vessel positions
+                stompClient.subscribe('/topic/vessel-positions', function (message) {
+                    showMessage('vessel', message.body);
+                });
+                
+                // Subscribe to vessel alerts
+                stompClient.subscribe('/topic/vessel-alerts', function (message) {
+                    showMessage('alert', message.body);
+                });
+            }, function(error) {
+                console.error('Connection error: ' + error);
+                updateStatus(false);
+            });
+        }
+
+        function disconnect() {
+            if (stompClient !== null) {
+                stompClient.disconnect();
+            }
+            updateStatus(false);
+            console.log("Disconnected");
+        }
+
+        function updateStatus(connected) {
+            const statusDiv = document.getElementById('status');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            
+            if (connected) {
+                statusDiv.textContent = 'Connected to WebSocket';
+                statusDiv.className = 'status connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                statusDiv.textContent = 'Disconnected';
+                statusDiv.className = 'status disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
+
+        function showMessage(type, message) {
+            const containerId = type + 'Messages';
+            const counterId = type + 'Count';
+            const container = document.getElementById(containerId);
+            const counter = document.getElementById(counterId);
+            
+            counters[type]++;
+            counter.textContent = counters[type];
+            
+            try {
+                // Parse the message - it comes as a JSON string
+                let data = JSON.parse(message);
+                
+                // If it's a string (double-encoded), parse again
+                if (typeof data === 'string') {
+                    data = JSON.parse(data);
+                }
+                
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message';
+                
+                const timestamp = new Date().toLocaleTimeString();
+                const preview = formatPreview(type, data);
+                
+                messageDiv.innerHTML = `
+                    <div class="timestamp">${timestamp}</div>
+                    <div>${preview}</div>
+                `;
+                
+                container.insertBefore(messageDiv, container.firstChild);
+                
+                // Keep only last 10 messages
+                while (container.children.length > 10) {
+                    container.removeChild(container.lastChild);
+                }
+            } catch (e) {
+                console.error('Error parsing message:', e, 'Raw message:', message);
+            }
+        }
+
+        function formatPreview(type, data) {
+            switch(type) {
+                case 'vessel':
+                    return `MMSI: ${data.mmsi || 'N/A'} | ${data.vesselName || 'Unknown'} | 
+                            Lat: ${data.latitude?.toFixed(4) || 'N/A'}, Lon: ${data.longitude?.toFixed(4) || 'N/A'} | 
+                            Speed: ${data.speed?.toFixed(1) || 'N/A'} kts`;
+                case 'alert':
+                    return `<strong>${data.alertType || 'ALERT'}</strong> | 
+                            MMSI: ${data.mmsi || 'N/A'} | 
+                            Severity: ${data.severity || 'N/A'} | 
+                            ${data.description || 'No description'}`;
+                default:
+                    return JSON.stringify(data).substring(0, 100);
+            }
+        }
+
+        function clearAll() {
+            ['vessel', 'weather', 'port', 'alert'].forEach(type => {
+                document.getElementById(type + 'Messages').innerHTML = '';
+                counters[type] = 0;
+                document.getElementById(type + 'Count').textContent = '0';
+            });
+        }
+
+        // Auto-connect on page load
+        window.onload = function() {
+            console.log('Page loaded. Click Connect to start receiving real-time updates.');
+        };
+    </script>
+</body>
+</html>

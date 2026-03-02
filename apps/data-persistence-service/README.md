@@ -27,6 +27,8 @@ port-data                               Elasticsearch
 - **Time-Series Analytics**: ClickHouse for historical data
 - **Real-time Cache**: Redis with TTL-based expiration
 - **Full-Text Search**: Elasticsearch for logs and alerts
+- **🆕 WebSocket Real-time Updates**: STOMP over SockJS for browser clients
+- **🆕 Redis Pub/Sub Bridge**: Low-latency message broadcasting
 
 ## Architecture
 
@@ -301,12 +303,41 @@ spring:
 
 ## Future Enhancements
 
+- [x] ✅ **WebSocket Real-time Updates** - COMPLETED
+- [x] ✅ **Redis Pub/Sub Bridge** - COMPLETED  
 - [ ] Elasticsearch integration for vessel search
 - [ ] Batch inserts optimization for ClickHouse
-- [ ] Redis Pub/Sub for real-time WebSocket updates
 - [ ] Dead Letter Queue (DLQ) for failed messages
 - [ ] Circuit breaker for database failures
 - [ ] Distributed tracing with OpenTelemetry
+
+## WebSocket Real-time Updates
+
+This service now includes WebSocket support for real-time browser updates!
+
+### Quick Start
+1. **Test Page**: Open `http://localhost:8083/websocket-test.html`
+2. **Health Check**: `curl http://localhost:8083/api/websocket/health`
+3. **Documentation**: See [WEBSOCKET.md](./WEBSOCKET.md) for complete guide
+
+### WebSocket Topics
+- `/topic/vessel-positions` - Real-time vessel positions (1-2s updates)
+- `/topic/weather-data` - Weather grid updates
+- `/topic/port-data` - Port operation changes
+- `/topic/vessel-alerts` - Critical vessel alerts
+
+### Architecture
+```
+Kafka → Persistence Service → PostgreSQL/ClickHouse/Redis
+                           ↓
+                      Redis Pub/Sub
+                           ↓
+                    WebSocket Bridge
+                           ↓
+                    Browser Clients
+```
+
+**📚 Complete Guide**: [WEBSOCKET-IMPLEMENTATION-SUMMARY.md](./WEBSOCKET-IMPLEMENTATION-SUMMARY.md)
 
 ## Testing
 

@@ -4,10 +4,8 @@
 -- Create database if not exists
 CREATE DATABASE IF NOT EXISTS vessel_monitoring;
 
-USE vessel_monitoring;
-
 -- Vessel Positions History Table
-CREATE TABLE IF NOT EXISTS vessel_positions_history (
+CREATE TABLE IF NOT EXISTS vessel_monitoring.vessel_positions_history (
     mmsi UInt32,
     vessel_name String,
     vessel_type LowCardinality(String),
@@ -34,11 +32,11 @@ TTL date + INTERVAL 2 YEAR
 SETTINGS index_granularity = 8192;
 
 -- Create indexes
-ALTER TABLE vessel_positions_history ADD INDEX idx_vessel_type vessel_type TYPE minmax GRANULARITY 4;
-ALTER TABLE vessel_positions_history ADD INDEX idx_country country TYPE set(100) GRANULARITY 4;
+ALTER TABLE vessel_monitoring.vessel_positions_history ADD INDEX idx_vessel_type vessel_type TYPE minmax GRANULARITY 4;
+ALTER TABLE vessel_monitoring.vessel_positions_history ADD INDEX idx_country country TYPE set(100) GRANULARITY 4;
 
 -- Vessel Alerts History Table
-CREATE TABLE IF NOT EXISTS vessel_alerts_history (
+CREATE TABLE IF NOT EXISTS vessel_monitoring.vessel_alerts_history (
     alert_id String,
     mmsi UInt32,
     vessel_name String,
@@ -57,11 +55,11 @@ TTL date + INTERVAL 3 YEAR
 SETTINGS index_granularity = 8192;
 
 -- Create indexes
-ALTER TABLE vessel_alerts_history ADD INDEX idx_alert_type alert_type TYPE set(50) GRANULARITY 4;
-ALTER TABLE vessel_alerts_history ADD INDEX idx_severity severity TYPE set(10) GRANULARITY 4;
+ALTER TABLE vessel_monitoring.vessel_alerts_history ADD INDEX idx_alert_type alert_type TYPE set(50) GRANULARITY 4;
+ALTER TABLE vessel_monitoring.vessel_alerts_history ADD INDEX idx_severity severity TYPE set(10) GRANULARITY 4;
 
 -- Weather Data History Table
-CREATE TABLE IF NOT EXISTS weather_data_history (
+CREATE TABLE IF NOT EXISTS vessel_monitoring.weather_data_history (
     grid_id String,
     latitude Float64,
     longitude Float64,
@@ -81,7 +79,7 @@ TTL date + INTERVAL 1 YEAR
 SETTINGS index_granularity = 8192;
 
 -- Port Operations History Table
-CREATE TABLE IF NOT EXISTS port_operations_history (
+CREATE TABLE IF NOT EXISTS vessel_monitoring.port_operations_history (
     operation_id String,
     port_id LowCardinality(String),
     port_name String,
@@ -101,11 +99,11 @@ TTL date + INTERVAL 2 YEAR
 SETTINGS index_granularity = 8192;
 
 -- Create indexes
-ALTER TABLE port_operations_history ADD INDEX idx_port_id port_id TYPE set(100) GRANULARITY 4;
-ALTER TABLE port_operations_history ADD INDEX idx_operation_type operation_type TYPE set(20) GRANULARITY 4;
+ALTER TABLE vessel_monitoring.port_operations_history ADD INDEX idx_port_id port_id TYPE set(100) GRANULARITY 4;
+ALTER TABLE vessel_monitoring.port_operations_history ADD INDEX idx_operation_type operation_type TYPE set(20) GRANULARITY 4;
 
 -- Materialized View: Vessel Movement Statistics (Hourly Aggregation)
-CREATE MATERIALIZED VIEW IF NOT EXISTS vessel_movement_stats_hourly
+CREATE MATERIALIZED VIEW IF NOT EXISTS vessel_monitoring.vessel_movement_stats_hourly
 ENGINE = SummingMergeTree()
 PARTITION BY toYYYYMM(date)
 ORDER BY (mmsi, hour, date)
@@ -121,11 +119,11 @@ AS SELECT
     min(speed) as min_speed,
     avg(latitude) as avg_latitude,
     avg(longitude) as avg_longitude
-FROM vessel_positions_history
+FROM vessel_monitoring.vessel_positions_history
 GROUP BY mmsi, vessel_name, vessel_type, hour, date;
 
 -- Materialized View: Alert Statistics (Daily Aggregation)
-CREATE MATERIALIZED VIEW IF NOT EXISTS alert_stats_daily
+CREATE MATERIALIZED VIEW IF NOT EXISTS vessel_monitoring.alert_stats_daily
 ENGINE = SummingMergeTree()
 PARTITION BY toYYYYMM(date)
 ORDER BY (alert_type, severity, date)
@@ -135,11 +133,11 @@ AS SELECT
     toDate(timestamp) as date,
     count() as alert_count,
     uniq(mmsi) as affected_vessels
-FROM vessel_alerts_history
+FROM vessel_monitoring.vessel_alerts_history
 GROUP BY alert_type, severity, date;
 
 -- Materialized View: Port Traffic Statistics (Daily Aggregation)
-CREATE MATERIALIZED VIEW IF NOT EXISTS port_traffic_stats_daily
+CREATE MATERIALIZED VIEW IF NOT EXISTS vessel_monitoring.port_traffic_stats_daily
 ENGINE = SummingMergeTree()
 PARTITION BY toYYYYMM(date)
 ORDER BY (port_id, date)
@@ -152,11 +150,11 @@ AS SELECT
     countIf(operation_type = 'ARRIVAL') as arrivals,
     countIf(operation_type = 'DEPARTURE') as departures,
     countIf(status = 'COMPLETED') as completed_operations
-FROM port_operations_history
+FROM vessel_monitoring.port_operations_history
 GROUP BY port_id, port_name, date;
 
 -- Materialized View: Weather Conditions (Hourly Average)
-CREATE MATERIALIZED VIEW IF NOT EXISTS weather_stats_hourly
+CREATE MATERIALIZED VIEW IF NOT EXISTS vessel_monitoring.weather_stats_hourly
 ENGINE = AggregatingMergeTree()
 PARTITION BY toYYYYMM(date)
 ORDER BY (grid_id, hour, date)
@@ -170,44 +168,15 @@ AS SELECT
     avgState(visibility) as avg_visibility,
     avgState(pressure) as avg_pressure,
     avgState(humidity) as avg_humidity
-FROM weather_data_history
+FROM vessel_monitoring.weather_data_history
 GROUP BY grid_id, hour, date;
 
 -- Create dictionary for vessel types (for faster lookups)
-CREATE DICTIONARY IF NOT EXISTS vessel_type_dict
-(
-    code String,
-    description String,
-    category String
-)
-PRIMARY KEY code
-SOURCE(CLICKHOUSE(
-    HOST 'localhost'
-    PORT 9000
-    USER 'default'
-    TABLE 'vessel_types'
-    DB 'vessel_monitoring'
-))
-LIFETIME(MIN 3600 MAX 7200)
-LAYOUT(FLAT());
+-- Note: Dictionary and projections can be added later after vessel_types table is created
 
--- Optimization: Create projection for faster geospatial queries
-ALTER TABLE vessel_positions_history ADD PROJECTION vessel_positions_by_location
-(
-    SELECT
-        mmsi,
-        vessel_name,
-        latitude,
-        longitude,
-        timestamp
-    ORDER BY (latitude, longitude, timestamp)
-);
+-- Optimize tables (commented out for initial setup as tables are empty)
+-- OPTIMIZE TABLE vessel_monitoring.vessel_positions_history FINAL;
+-- OPTIMIZE TABLE vessel_monitoring.vessel_alerts_history FINAL;
+-- OPTIMIZE TABLE vessel_monitoring.weather_data_history FINAL;
+-- OPTIMIZE TABLE vessel_monitoring.port_operations_history FINAL;
 
--- Optimize tables
-OPTIMIZE TABLE vessel_positions_history FINAL;
-OPTIMIZE TABLE vessel_alerts_history FINAL;
-OPTIMIZE TABLE weather_data_history FINAL;
-OPTIMIZE TABLE port_operations_history FINAL;
-
--- Note: GRANT statements are not needed for default user with XML-based auth
--- GRANT ALL ON vessel_monitoring.* TO default;

@@ -167,9 +167,13 @@ public class VesselPersistenceService {
         try {
             positions.forEach(position -> {
                 String key = "vessel:position:" + position.get("mmsi").asInt();
-                redisTemplate.opsForValue().set(key, position.toString(), Duration.ofMinutes(5));
+                String jsonString = position.toString();  // JsonNode.toString() produces valid JSON
+                redisTemplate.opsForValue().set(key, jsonString, Duration.ofMinutes(5));
+                
+                // Publish to Redis channel for WebSocket broadcasting (send as JSON string)
+                redisTemplate.convertAndSend("vessel-positions-stream", jsonString);
             });
-            log.debug("Cached {} positions in Redis", positions.size());
+            log.debug("Cached {} positions in Redis and published to WebSocket stream", positions.size());
         } catch (Exception e) {
             log.error("Error caching to Redis: {}", e.getMessage(), e);
             throw e;

@@ -61,6 +61,7 @@ public class WeatherPersistenceService {
 
     @Transactional
     public void persistWeatherData(List<JsonNode> weatherData) {
+        // Weather data is queried via REST API, not pushed via WebSocket
         CompletableFuture<Void> postgresTask = CompletableFuture.runAsync(() -> 
             saveToPostgres(weatherData));
         
@@ -68,7 +69,7 @@ public class WeatherPersistenceService {
             saveToClickHouse(weatherData));
         
         CompletableFuture<Void> redisTask = CompletableFuture.runAsync(() -> 
-            saveToRedis(weatherData));
+            cacheToRedis(weatherData));
 
         CompletableFuture.allOf(postgresTask, clickhouseTask, redisTask).join();
     }
@@ -149,15 +150,16 @@ public class WeatherPersistenceService {
         }
     }
 
-    private void saveToRedis(List<JsonNode> weatherData) {
+    private void cacheToRedis(List<JsonNode> weatherData) {
         try {
             weatherData.forEach(weather -> {
                 if (weather.has("gridId") && !weather.get("gridId").isNull()) {
                     String key = "weather:grid:" + weather.get("gridId").asText();
-                    redisTemplate.opsForValue().set(key, weather.toString(), Duration.ofMinutes(30));
+                    String jsonString = weather.toString();
+                    redisTemplate.opsForValue().set(key, jsonString, Duration.ofMinutes(30));
                 }
             });
-            log.debug("Cached {} weather records in Redis", weatherData.size());
+            log.debug("Cached {} weather records in Redis (for REST API queries)", weatherData.size());
         } catch (Exception e) {
             log.error("Error caching weather to Redis: {}", e.getMessage(), e);
             throw e;

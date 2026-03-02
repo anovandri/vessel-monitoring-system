@@ -155,6 +155,31 @@ services:
         soft: 262144
         hard: 262144
 
+  # ClickHouse Init - Initialize database and tables
+  clickhouse-init:
+    image: clickhouse/clickhouse-server:23.12
+    container_name: vms-clickhouse-init
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - vms-network
+    volumes:
+      - ./scripts/init-clickhouse.sql:/init-clickhouse.sql
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      echo 'Waiting for ClickHouse to be ready...'
+      sleep 5
+      
+      echo 'Initializing ClickHouse database and tables...'
+      clickhouse-client --host clickhouse --multiquery < /init-clickhouse.sql
+      
+      echo 'ClickHouse initialization completed!'
+      clickhouse-client --host clickhouse --query 'SHOW DATABASES'
+      clickhouse-client --host clickhouse --query 'SHOW TABLES FROM vessel_monitoring'
+      "
+
   # Redis - Real-time cache with TTL
   redis:
     image: redis:7.2-alpine

@@ -30,6 +30,12 @@ public class WeatherData {
     private Double longitude;
 
     /**
+     * Grid ID (generated from lat/lon for spatial indexing, e.g., "10_1040")
+     */
+    @JsonProperty("gridId")
+    private String gridId;
+
+    /**
      * Location name (e.g., "Singapore Strait", "Port of Rotterdam")
      */
     @JsonProperty("location_name")
