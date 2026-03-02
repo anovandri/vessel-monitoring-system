@@ -33,13 +33,48 @@ public class WeatherCollector extends DataCollector {
     // Weather monitoring locations for Indonesian maritime areas
     // Major Indonesian ports and strategic maritime locations
     private static final List<Map<String, Double>> MONITORING_LOCATIONS = List.of(
+            // Major Ports
             Map.of("lat", -6.11, "lon", 106.89),   // Jakarta (Tanjung Priok Port)
             Map.of("lat", -7.21, "lon", 112.74),   // Surabaya (Tanjung Perak Port)
             Map.of("lat", -5.13, "lon", 119.43),   // Makassar (Soekarno-Hatta Port)
             Map.of("lat", 1.15, "lon", 104.03),    // Batam (Singapore Strait)
             Map.of("lat", 3.59, "lon", 98.67),     // Belawan/Medan
             Map.of("lat", -8.75, "lon", 115.17),   // Benoa/Bali
-            Map.of("lat", -0.95, "lon", 100.35)    // Padang (West Sumatra)
+            Map.of("lat", -0.95, "lon", 100.35),   // Padang (West Sumatra)
+            
+            // Java Sea - Major Shipping Routes
+            Map.of("lat", -5.85, "lon", 110.50),   // Java Sea - Central
+            Map.of("lat", -6.25, "lon", 108.50),   // Java Sea - West
+            Map.of("lat", -6.50, "lon", 111.00),   // Java Sea - East
+            Map.of("lat", -5.50, "lon", 112.50),   // Java Sea - Northeast
+            
+            // Makassar Strait - High Traffic
+            Map.of("lat", -2.50, "lon", 118.00),   // Makassar Strait - North
+            Map.of("lat", -3.50, "lon", 118.50),   // Makassar Strait - Central
+            Map.of("lat", -4.50, "lon", 118.80),   // Makassar Strait - South
+            
+            // Malacca Strait - World's Busiest
+            Map.of("lat", 2.50, "lon", 100.50),    // Malacca Strait - North
+            Map.of("lat", 1.80, "lon", 101.50),    // Malacca Strait - Central
+            Map.of("lat", 0.90, "lon", 102.80),    // Malacca Strait - South
+            
+            // Sunda Strait
+            Map.of("lat", -6.05, "lon", 105.45),   // Sunda Strait - Main Channel
+            
+            // Lombok Strait
+            Map.of("lat", -8.45, "lon", 115.65),   // Lombok Strait - Deep Water Route
+            
+            // Banda Sea - Eastern Routes
+            Map.of("lat", -4.50, "lon", 128.00),   // Banda Sea - West
+            Map.of("lat", -6.00, "lon", 130.50),   // Banda Sea - East
+            
+            // Celebes Sea - Northern Routes
+            Map.of("lat", 1.50, "lon", 121.00),    // Celebes Sea - West
+            Map.of("lat", 2.50, "lon", 123.50),    // Celebes Sea - East
+            
+            // Additional Strategic Points
+            Map.of("lat", -1.27, "lon", 116.83),   // Balikpapan (Kalimantan)
+            Map.of("lat", -2.14, "lon", 106.11)    // Mentok/Bangka Island (Tin Route)
     );
 
     public WeatherCollector(

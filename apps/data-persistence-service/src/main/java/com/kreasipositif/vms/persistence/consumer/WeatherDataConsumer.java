@@ -40,16 +40,30 @@ public class WeatherDataConsumer {
             Acknowledgment acknowledgment) {
         
         try {
-            log.debug("Received {} weather records from partition {} at offset {}", 
+            log.info("Received {} weather records from partition {} at offset {}", 
                 weatherData.size(), partition, offset);
 
+            // Extract parsedData from each message
+            List<JsonNode> parsedDataList = weatherData.stream()
+                .filter(data -> data.has("parsedData") && !data.get("parsedData").isNull())
+                .map(data -> data.get("parsedData"))
+                .toList();
+
+            if (parsedDataList.isEmpty()) {
+                log.warn("No valid parsedData found in {} weather records", weatherData.size());
+                acknowledgment.acknowledge();
+                return;
+            }
+
+            log.info("Processing {} parsed weather records", parsedDataList.size());
+
             // Process batch
-            weatherPersistenceService.persistWeatherData(weatherData);
+            weatherPersistenceService.persistWeatherData(parsedDataList);
 
             // Manual commit after successful processing
             acknowledgment.acknowledge();
 
-            log.debug("Successfully processed {} weather records", weatherData.size());
+            log.info("Successfully processed {} weather records", parsedDataList.size());
 
         } catch (Exception e) {
             log.error("Error processing weather data from partition {} at offset {}: {}", 

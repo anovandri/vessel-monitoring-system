@@ -77,37 +77,54 @@ public class WeatherPersistenceService {
     private void saveToPostgres(List<JsonNode> weatherData) {
         try {
             weatherData.forEach(weather -> {
-                // Validate required fields
-                if (!weather.has("gridId") || weather.get("gridId").isNull()) {
-                    log.warn("Skipping weather record: missing gridId");
-                    return;
-                }
-                if (!weather.has("timestamp") || weather.get("timestamp").isNull()) {
-                    log.warn("Skipping weather record: missing timestamp for gridId {}", weather.get("gridId").asText());
+                // Validate required fields (handle both camelCase and snake_case)
+                String gridId = weather.has("gridId") ? weather.get("gridId").asText() 
+                              : weather.has("grid_id") ? weather.get("grid_id").asText() : null;
+                              
+                if (gridId == null || gridId.isEmpty()) {
+                    log.warn("Skipping weather record: missing gridId/grid_id");
                     return;
                 }
                 
-                // Convert timestamp
-                long timestampMillis = weather.get("timestamp").asLong();
+                // Get timestamp from various possible fields
+                long timestampMillis;
+                if (weather.has("timestamp") && !weather.get("timestamp").isNull()) {
+                    String timestampStr = weather.get("timestamp").asText();
+                    // Parse ISO timestamp string to milliseconds
+                    try {
+                        timestampMillis = java.time.Instant.parse(timestampStr).toEpochMilli();
+                    } catch (Exception e) {
+                        timestampMillis = System.currentTimeMillis();
+                        log.warn("Failed to parse timestamp '{}', using current time", timestampStr);
+                    }
+                } else {
+                    timestampMillis = System.currentTimeMillis();
+                    log.warn("Using current time for gridId {} (no timestamp)", gridId);
+                }
+                
                 Timestamp timestamp = new Timestamp(timestampMillis);
                 
+                // Extract values with fallbacks for both naming conventions
+                double latitude = getFieldValue(weather, "latitude", "latitude");
+                double longitude = getFieldValue(weather, "longitude", "longitude");
+                
                 postgresJdbcTemplate.update(POSTGRES_UPSERT_SQL,
-                    weather.get("gridId").asText(),
-                    getDoubleValue(weather, "latitude"),
-                    getDoubleValue(weather, "longitude"),
-                    getDoubleOrNull(weather, "temperature"),
-                    getDoubleOrNull(weather, "windSpeed"),
-                    getDoubleOrNull(weather, "windDirection"),
-                    getDoubleOrNull(weather, "waveHeight"),
-                    getDoubleOrNull(weather, "visibility"),
-                    getDoubleOrNull(weather, "pressure"),
-                    getDoubleOrNull(weather, "humidity"),
+                    gridId,
+                    latitude,
+                    longitude,
+                    getFieldValueOrNull(weather, "temperature", "temperature"),
+                    getFieldValueOrNull(weather, "windSpeed", "wind_speed"),
+                    getFieldValueOrNull(weather, "windDirection", "wind_direction"),
+                    getFieldValueOrNull(weather, "waveHeight", "wave_height"),
+                    getFieldValueOrNull(weather, "visibility", "visibility"),
+                    getFieldValueOrNull(weather, "pressure", "pressure"),
+                    getFieldValueOrNull(weather, "humidity", "humidity"),
                     timestamp,
-                    getDoubleValue(weather, "longitude"), // for ST_MakePoint
-                    getDoubleValue(weather, "latitude")   // for ST_MakePoint
+                    longitude, // for ST_MakePoint
+                    latitude   // for ST_MakePoint
                 );
             });
-            log.debug("Saved {} weather records to PostgreSQL", weatherData.size());
+            log.info("Saved {} weather records to PostgreSQL", weatherData.size());
         } catch (Exception e) {
             log.error("Error saving weather to PostgreSQL: {}", e.getMessage(), e);
             throw e;
@@ -118,51 +135,63 @@ public class WeatherPersistenceService {
         try {
             weatherData.forEach(weather -> {
                 // Validate required fields
-                if (!weather.has("gridId") || weather.get("gridId").isNull()) {
-                    return;
-                }
-                if (!weather.has("timestamp") || weather.get("timestamp").isNull()) {
+                String gridId = weather.has("gridId") ? weather.get("gridId").asText() 
+                              : weather.has("grid_id") ? weather.get("grid_id").asText() : null;
+                if (gridId == null || gridId.isEmpty()) {
                     return;
                 }
                 
-                // Convert timestamp
-                long timestampMillis = weather.get("timestamp").asLong();
+                // Get timestamp
+                long timestampMillis;
+                if (weather.has("timestamp") && !weather.get("timestamp").isNull()) {
+                    String timestampStr = weather.get("timestamp").asText();
+                    try {
+                        timestampMillis = java.time.Instant.parse(timestampStr).toEpochMilli();
+                    } catch (Exception e) {
+                        timestampMillis = System.currentTimeMillis();
+                    }
+                } else {
+                    timestampMillis = System.currentTimeMillis();
+                }
+                
                 Timestamp timestamp = new Timestamp(timestampMillis);
                 
                 clickhouseJdbcTemplate.update(CLICKHOUSE_INSERT_SQL,
-                    weather.get("gridId").asText(),
-                    getDoubleValue(weather, "latitude"),
-                    getDoubleValue(weather, "longitude"),
-                    getDoubleOrNull(weather, "temperature"),
-                    getDoubleOrNull(weather, "windSpeed"),
-                    getDoubleOrNull(weather, "windDirection"),
-                    getDoubleOrNull(weather, "waveHeight"),
-                    getDoubleOrNull(weather, "visibility"),
-                    getDoubleOrNull(weather, "pressure"),
-                    getDoubleOrNull(weather, "humidity"),
+                    gridId,
+                    getFieldValue(weather, "latitude", "latitude"),
+                    getFieldValue(weather, "longitude", "longitude"),
+                    getFieldValueOrNull(weather, "temperature", "temperature"),
+                    getFieldValueOrNull(weather, "windSpeed", "wind_speed"),
+                    getFieldValueOrNull(weather, "windDirection", "wind_direction"),
+                    getFieldValueOrNull(weather, "waveHeight", "wave_height"),
+                    getFieldValueOrNull(weather, "visibility", "visibility"),
+                    getFieldValueOrNull(weather, "pressure", "pressure"),
+                    getFieldValueOrNull(weather, "humidity", "humidity"),
                     timestamp
                 );
             });
-            log.debug("Saved {} weather records to ClickHouse", weatherData.size());
+            log.info("Saved {} weather records to ClickHouse", weatherData.size());
         } catch (Exception e) {
             log.error("Error saving weather to ClickHouse: {}", e.getMessage(), e);
-            throw e;
+            // Don't throw - allow other saves to continue
         }
     }
 
     private void cacheToRedis(List<JsonNode> weatherData) {
         try {
             weatherData.forEach(weather -> {
-                if (weather.has("gridId") && !weather.get("gridId").isNull()) {
-                    String key = "weather:grid:" + weather.get("gridId").asText();
+                String gridId = weather.has("gridId") ? weather.get("gridId").asText() 
+                              : weather.has("grid_id") ? weather.get("grid_id").asText() : null;
+                if (gridId != null && !gridId.isEmpty()) {
+                    String key = "weather:grid:" + gridId;
                     String jsonString = weather.toString();
                     redisTemplate.opsForValue().set(key, jsonString, Duration.ofMinutes(30));
                 }
             });
-            log.debug("Cached {} weather records in Redis (for REST API queries)", weatherData.size());
+            log.info("Cached {} weather records in Redis (for REST API queries)", weatherData.size());
         } catch (Exception e) {
             log.error("Error caching weather to Redis: {}", e.getMessage(), e);
-            throw e;
+            // Don't throw - allow other saves to continue
         }
     }
 
@@ -184,6 +213,28 @@ public class WeatherPersistenceService {
      */
     private Double getDoubleValue(JsonNode node, String fieldName) {
         Double value = getDoubleOrNull(node, fieldName);
+        return value != null ? value : 0.0;
+    }
+    
+    /**
+     * Helper method to get field value with both camelCase and snake_case fallback
+     * Returns null if neither field exists
+     */
+    private Double getFieldValueOrNull(JsonNode node, String camelCase, String snakeCase) {
+        if (node.has(camelCase) && !node.get(camelCase).isNull()) {
+            return node.get(camelCase).asDouble();
+        }
+        if (node.has(snakeCase) && !node.get(snakeCase).isNull()) {
+            return node.get(snakeCase).asDouble();
+        }
+        return null;
+    }
+    
+    /**
+     * Helper method to get required field value with fallback to 0.0
+     */
+    private double getFieldValue(JsonNode node, String camelCase, String snakeCase) {
+        Double value = getFieldValueOrNull(node, camelCase, snakeCase);
         return value != null ? value : 0.0;
     }
 }

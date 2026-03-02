@@ -3,27 +3,27 @@
 @import "leaflet/dist/leaflet.css";
 
 :root {
-  /* Maritime Dark Theme - from vessel-monitoring.pen */
-  --color-bg-page: #0A0E1A;
-  --color-bg-panel: #0F1420;
-  --color-bg-sidebar: #060912;
-  --color-border: #1A1F2E;
+  /* Light Theme - OSM-inspired from vessel-monitoring.pen */
+  --color-bg-page: #F5F5F5;
+  --color-bg-panel: #FFFFFF;
+  --color-bg-sidebar: #FFFFFF;
+  --color-border: #E0E0E0;
   
-  --color-accent-cyan: #00E5FF;
-  --color-accent-cyan-dim: #00E5FF40;
-  --color-accent-cyan-glow: #00E5FF20;
+  --color-accent-cyan: #00A0E3;
+  --color-accent-cyan-dim: rgba(0, 160, 227, 0.25);
+  --color-accent-cyan-glow: rgba(0, 160, 227, 0.125);
   
-  --color-text-primary: #E8F0F8;
-  --color-text-secondary: #8B95A8;
-  --color-text-tertiary: #5A6478;
+  --color-text-primary: #333333;
+  --color-text-secondary: #666666;
+  --color-text-tertiary: #999999;
   
-  --color-success: #00FF88;
-  --color-danger: #FF3D71;
-  --color-warning: #FFB800;
-  --color-info: #4A90E2;
+  --color-success: #28A745;
+  --color-danger: #DC3545;
+  --color-warning: #FFC107;
+  --color-info: #17A2B8;
   
   --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'Roboto Mono', monospace;
+  --font-mono: 'Inter', system-ui, sans-serif;
 }
 
 @theme inline {
