@@ -111,11 +111,12 @@ management:
     tags:
       application: ${spring.application.name}
       environment: ${ENVIRONMENT:development}
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
-
-# Logging
+        
+        # Logging
 logging:
   level:
     root: INFO
