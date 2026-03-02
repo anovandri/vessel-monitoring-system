@@ -31,8 +31,9 @@ export function useVesselWebSocket(options: UseVesselWebSocketOptions = {}) {
   const [alerts, setAlerts] = useState<VesselAlert[]>([]);
   const clientRef = useRef<Client | null>(null);
   
-  // Batch updates to reduce re-renders
-  const pendingUpdatesRef = useRef<Map<number, VesselPosition>>(new Map());
+  // High-performance batching with requestAnimationFrame
+  const updateBufferRef = useRef<VesselPosition[]>([]);
+  const animationFrameScheduledRef = useRef(false);
   
   // Store callbacks in refs to avoid recreating the client
   const callbacksRef = useRef({ onPositionUpdate, onAlert, onConnect, onDisconnect, onError });
@@ -41,24 +42,44 @@ export function useVesselWebSocket(options: UseVesselWebSocketOptions = {}) {
     callbacksRef.current = { onPositionUpdate, onAlert, onConnect, onDisconnect, onError };
   }, [onPositionUpdate, onAlert, onConnect, onDisconnect, onError]);
   
-  // Flush pending updates every 500ms
+  // Process buffered updates using requestAnimationFrame for optimal performance
   useEffect(() => {
-    const flushUpdates = () => {
-      if (pendingUpdatesRef.current.size > 0) {
+    const processBuffer = () => {
+      if (updateBufferRef.current.length > 0) {
+        // Process all buffered updates in a single state update
+        const batch = updateBufferRef.current.splice(0, updateBufferRef.current.length);
+        
         setPositions((prev) => {
           const updated = new Map(prev);
-          pendingUpdatesRef.current.forEach((position, mmsi) => {
-            updated.set(mmsi, position);
+          batch.forEach((position) => {
+            updated.set(position.mmsi, position);
           });
-          pendingUpdatesRef.current.clear();
           return updated;
+        });
+      }
+      
+      animationFrameScheduledRef.current = false;
+    };
+    
+    // Poll for updates - this gets called automatically by RAF
+    const scheduleUpdate = () => {
+      if (!animationFrameScheduledRef.current && updateBufferRef.current.length > 0) {
+        animationFrameScheduledRef.current = true;
+        requestAnimationFrame(() => {
+          processBuffer();
+          // Continue polling if there are more updates
+          if (enabled) {
+            scheduleUpdate();
+          }
         });
       }
     };
     
-    const interval = setInterval(flushUpdates, 500); // Batch updates every 500ms
+    // Check for updates every 100ms (10 FPS for updates)
+    const interval = setInterval(scheduleUpdate, 100);
+    
     return () => clearInterval(interval);
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {
@@ -102,8 +123,8 @@ export function useVesselWebSocket(options: UseVesselWebSocketOptions = {}) {
             
             console.log('Vessel position updated:', position.mmsi, position.vesselName);
             
-            // Add to pending updates instead of immediate state update
-            pendingUpdatesRef.current.set(position.mmsi, position);
+            // Add to buffer instead of immediate state update
+            updateBufferRef.current.push(position);
             callbacksRef.current.onPositionUpdate?.(position);
           } catch (error) {
             console.error('Error parsing vessel position:', error, message.body);

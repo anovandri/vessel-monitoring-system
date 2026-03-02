@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import WeatherOverlay from './WeatherOverlay';
-import VesselOverlay from './VesselOverlay';
+import CanvasVesselOverlay from './CanvasVesselOverlay';
 import { WeatherData, getWeatherForBounds } from '@/lib/api/weather';
 import { useVesselWebSocket } from '@/lib/hooks/useVesselWebSocket';
 import { VesselPosition } from '@/lib/types/vessel';
@@ -282,8 +282,8 @@ export default function MapView() {
         )}
         
         {/* Vessel Overlay - Real-time vessel positions */}
-        <VesselOverlay 
-          vessels={vesselPositions} 
+        <CanvasVesselOverlay 
+          vessels={Array.from(vesselPositions.values())} 
           enabled={overlays.vessels}
           onVesselClick={handleVesselClick}
         />
