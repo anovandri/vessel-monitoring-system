@@ -1,0 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+:root {
+  /* Maritime Dark Theme - from vessel-monitoring.pen */
+  --color-bg-page: #0A0E1A;
+  --color-bg-panel: #0F1420;
+  --color-bg-sidebar: #060912;
+  --color-border: #1A1F2E;
+  
+  --color-accent-cyan: #00E5FF;
+  --color-accent-cyan-dim: #00E5FF40;
+  --color-accent-cyan-glow: #00E5FF20;
+  
+  --color-text-primary: #E8F0F8;
+  --color-text-secondary: #8B95A8;
+  --color-text-tertiary: #5A6478;
+  
+  --color-success: #00FF88;
+  --color-danger: #FF3D71;
+  --color-warning: #FFB800;
+  --color-info: #4A90E2;
+  
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'Roboto Mono', monospace;
+}
+
+@theme inline {
+  --color-bg-page: var(--color-bg-page);
+  --color-bg-panel: var(--color-bg-panel);
+  --color-bg-sidebar: var(--color-bg-sidebar);
+  --color-border: var(--color-border);
+  
+  --color-accent-cyan: var(--color-accent-cyan);
+  --color-accent-cyan-dim: var(--color-accent-cyan-dim);
+  --color-accent-cyan-glow: var(--color-accent-cyan-glow);
+  
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-tertiary: var(--color-text-tertiary);
+  
+  --color-success: var(--color-success);
+  --color-danger: var(--color-danger);
+  --color-warning: var(--color-warning);
+  --color-info: var(--color-info);
+  
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+body {
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+html {
+  overflow: hidden;
+  height: 100%;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
