@@ -70,11 +70,14 @@ export function useVesselWebSocket(options: UseVesselWebSocketOptions = {}) {
         // Process all buffered updates in a single state update
         const batch = updateBufferRef.current.splice(0, updateBufferRef.current.length);
         
+        console.log(`useVesselWebSocket: Processing ${batch.length} vessel updates`);
+        
         setPositions((prev) => {
           const updated = new Map(prev);
           batch.forEach((position) => {
             updated.set(position.mmsi, position);
           });
+          console.log(`useVesselWebSocket: Total vessels in state: ${updated.size}`);
           return updated;
         });
       }
@@ -197,9 +200,16 @@ export function useVesselWebSocket(options: UseVesselWebSocketOptions = {}) {
     };
   }, [enabled]); // Only reconnect when enabled changes
 
+  const positionsArray = Array.from(positions.values());
+  
+  // Debug: Log every time the return value changes
+  useEffect(() => {
+    console.log('useVesselWebSocket: Returning', positionsArray.length, 'vessels, isConnected:', isConnected);
+  }, [positionsArray.length, isConnected]);
+
   return {
     isConnected,
-    positions: Array.from(positions.values()),
+    positions: positionsArray,
     alerts,
   };
 }

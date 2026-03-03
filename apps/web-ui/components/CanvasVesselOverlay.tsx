@@ -11,7 +11,6 @@ interface CanvasVesselOverlayProps {
   onVesselClick?: (vessel: VesselPosition) => void;
 }
 
-// Vessel type to color mapping (MarineTraffic style)
 const VESSEL_TYPE_COLORS: Record<string, string> = {
   cargo: '#FF6B00',
   tanker: '#FF0000',
@@ -26,268 +25,196 @@ const VESSEL_TYPE_COLORS: Record<string, string> = {
 
 function getVesselColor(vessel: VesselPosition): string {
   const type = vessel.vesselType?.toLowerCase() || 'unknown';
-  
   if (type.includes('cargo')) return VESSEL_TYPE_COLORS.cargo;
   if (type.includes('tanker')) return VESSEL_TYPE_COLORS.tanker;
   if (type.includes('passenger')) return VESSEL_TYPE_COLORS.passenger;
   if (type.includes('fishing')) return VESSEL_TYPE_COLORS.fishing;
   if (type.includes('tug')) return VESSEL_TYPE_COLORS.tug;
-  
   return VESSEL_TYPE_COLORS.unknown;
 }
 
+function toNum(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') return parseFloat(v);
+  return NaN;
+}
+
+function createPopupContent(vessel: VesselPosition): string {
+  const lat = toNum(vessel.latitude);
+  const lon = toNum(vessel.longitude);
+  const speed = !isNaN(toNum(vessel.speed)) ? toNum(vessel.speed).toFixed(1) : 'N/A';
+  const course = !isNaN(toNum(vessel.course)) ? toNum(vessel.course).toFixed(0) + '°' : 'N/A';
+  const coords = !isNaN(lat) && !isNaN(lon) ? `${lat.toFixed(6)}, ${lon.toFixed(6)}` : 'N/A';
+
+  return `
+    <div style="min-width:250px;font-family:Inter,sans-serif;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(0,255,255,0.2);">
+        <div style="font-size:22px;">🚢</div>
+        <div>
+          <div style="font-weight:600;font-size:14px;color:rgba(0,255,255,0.95);">${vessel.vesselName || 'Unknown Vessel'}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.6);">MMSI: ${vessel.mmsi}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">
+        <div>
+          <div style="color:rgba(255,255,255,0.6);font-size:10px;margin-bottom:2px;">Speed</div>
+          <div style="font-weight:500;">${speed} kn</div>
+        </div>
+        <div>
+          <div style="color:rgba(255,255,255,0.6);font-size:10px;margin-bottom:2px;">Course</div>
+          <div style="font-weight:500;">${course}</div>
+        </div>
+        <div style="grid-column:1/-1;">
+          <div style="color:rgba(255,255,255,0.6);font-size:10px;margin-bottom:2px;">Position</div>
+          <div style="font-size:11px;font-family:monospace;">${coords}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
 /**
- * High-performance Canvas-based vessel overlay
- * Uses Leaflet Canvas renderer for optimal performance with hundreds of vessels
+ * Vessel overlay – synchronous Leaflet marker management (no requestAnimationFrame).
+ *
+ * WHY no RAF:  React's useEffect cleanup runs cancelAnimationFrame() every time the
+ * `vessels` array reference changes (i.e. every WebSocket tick), so a RAF-based
+ * approach always gets cancelled before it can execute.  Direct, synchronous updates
+ * inside the effect body are the correct pattern here.
  */
-export default function CanvasVesselOverlay({ 
-  vessels, 
+export default function CanvasVesselOverlay({
+  vessels,
   enabled,
-  onVesselClick 
+  onVesselClick,
 }: CanvasVesselOverlayProps) {
-  console.log(`CanvasVesselOverlay render: vessels.length=${vessels.length}, enabled=${enabled}`);
-  
   const map = useMap();
-  const canvasLayerRef = useRef<L.Canvas | null>(null);
-  const vesselsMapRef = useRef<Map<number, { marker: L.Marker; vessel: VesselPosition }>>(new Map());
-  const animationFrameRef = useRef<number | null>(null);
-  const needsUpdateRef = useRef(false);
 
-  // Initialize canvas renderer
+  // Persistent marker store: mmsi → Leaflet Marker
+  const markersRef = useRef<Map<number, L.Marker>>(new Map());
+
+  // Keep click-handler ref fresh on every render without adding it to effect deps
+  const onClickRef = useRef(onVesselClick);
+  useEffect(() => { onClickRef.current = onVesselClick; });
+
+  // ─── Main sync effect ────────────────────────────────────────────────────
   useEffect(() => {
-    if (!canvasLayerRef.current) {
-      canvasLayerRef.current = L.canvas({ padding: 0.5 });
-    }
-  }, []);
+    const markers = markersRef.current;
 
-  // Batch update function using requestAnimationFrame
-  useEffect(() => {
-    const updateMarkers = () => {
-      if (!enabled || !needsUpdateRef.current) {
-        animationFrameRef.current = null;
-        return;
-      }
-
-      console.log(`CanvasVesselOverlay: Updating ${vessels.length} vessels`);
-
-      const vesselsMap = vesselsMapRef.current;
-      const currentVesselIds = new Set(vessels.map(v => v.mmsi));
-      const existingVesselIds = new Set(vesselsMap.keys());
-
-      // Remove vessels that are no longer present
-      existingVesselIds.forEach(mmsi => {
-        if (!currentVesselIds.has(mmsi)) {
-          const entry = vesselsMap.get(mmsi);
-          if (entry) {
-            entry.marker.remove();
-            vesselsMap.delete(mmsi);
-          }
-        }
-      });
-
-      // Update or create markers
-      let created = 0;
-      let updated = 0;
-      vessels.forEach((vessel) => {
-        // Convert string coordinates to numbers if needed (backend sends strings due to Jackson config)
-        const lat = typeof vessel.latitude === 'string' ? parseFloat(vessel.latitude) : vessel.latitude;
-        const lon = typeof vessel.longitude === 'string' ? parseFloat(vessel.longitude) : vessel.longitude;
-        
-        if (typeof lat !== 'number' || isNaN(lat) || typeof lon !== 'number' || isNaN(lon)) {
-          console.warn(`Invalid position for vessel ${vessel.mmsi}:`, vessel.latitude, vessel.longitude);
-          return;
-        }
-
-        const position = L.latLng(lat, lon);
-        const color = getVesselColor(vessel);
-        
-        // Handle course - convert string to number if needed
-        let rotation = 0;
-        if (vessel.course !== null && vessel.course !== undefined) {
-          rotation = typeof vessel.course === 'string' ? parseFloat(vessel.course) : vessel.course;
-        }
-        const existingEntry = vesselsMap.get(vessel.mmsi);
-
-        if (existingEntry) {
-          // Update existing marker position and rotation without recreating
-          existingEntry.marker.setLatLng(position);
-          existingEntry.vessel = vessel;
-          // Update the icon rotation
-          const iconElement = existingEntry.marker.getElement();
-          if (iconElement) {
-            const arrow = iconElement.querySelector('.vessel-arrow-svg');
-            if (arrow) {
-              (arrow as HTMLElement).style.transform = `rotate(${rotation}deg)`;
-            }
-          }
-          updated++;
-        } else {
-          // Create new arrow marker using DivIcon for better control
-          const icon = L.divIcon({
-            html: `
-              <div class="vessel-arrow-svg" style="transform: rotate(${rotation}deg); width: 16px; height: 16px;">
-                <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M8 1 L14 14 L8 12 L2 14 Z" fill="${color}" stroke="#000" stroke-width="0.8" opacity="0.9"/>
-                </svg>
-              </div>
-            `,
-            className: 'vessel-arrow-marker',
-            iconSize: [16, 16],
-            iconAnchor: [8, 8],
-            popupAnchor: [0, -8],
-          });
-
-          const marker = L.marker(position, {
-            icon: icon,
-            interactive: true,
-          });
-
-          // Add tooltip
-          marker.bindTooltip(
-            `<div style="font-family: Inter, sans-serif; font-size: 12px;">
-              <strong style="color: rgba(0, 255, 255, 0.95);">${vessel.vesselName || 'Unknown'}</strong><br/>
-              <span style="color: rgba(255, 255, 255, 0.6); font-size: 10px;">Data: Mock AIS</span>
-            </div>`,
-            {
-              className: 'vessel-canvas-tooltip',
-              direction: 'top',
-              offset: [0, -8],
-            }
-          );
-
-          // Add popup with detailed info
-          marker.bindPopup(createPopupContent(vessel), {
-            maxWidth: 300,
-            className: 'vessel-popup',
-          });
-
-          // Add click handler
-          if (onVesselClick) {
-            marker.on('click', () => onVesselClick(vessel));
-          }
-
-          marker.addTo(map);
-          vesselsMap.set(vessel.mmsi, { marker, vessel });
-          created++;
-        }
-      });
-
-      console.log(`CanvasVesselOverlay: Created ${created}, Updated ${updated}, Total markers: ${vesselsMap.size}`);
-      needsUpdateRef.current = false;
-      animationFrameRef.current = null;
-    };
-
-    console.log(`CanvasVesselOverlay useEffect: enabled=${enabled}, vessels.length=${vessels.length}, animationFrameScheduled=${!!animationFrameRef.current}`);
-
-    // Schedule update if needed
-    if (enabled && vessels.length > 0 && !animationFrameRef.current) {
-      console.log('CanvasVesselOverlay: Scheduling RAF update');
-      needsUpdateRef.current = true;
-      animationFrameRef.current = requestAnimationFrame(updateMarkers);
+    // Disabled → remove everything immediately
+    if (!enabled) {
+      markers.forEach((m) => m.remove());
+      markers.clear();
+      return;
+      // No cleanup needed here – we already removed everything
     }
 
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [vessels, enabled, map, onVesselClick]);
+    // Build set of incoming MMSIs
+    const incomingIds = new Set<number>();
 
-  // Cleanup on unmount
+    vessels.forEach((vessel) => {
+      const lat = toNum(vessel.latitude);
+      const lon = toNum(vessel.longitude);
+      if (isNaN(lat) || isNaN(lon)) return;
+
+      incomingIds.add(vessel.mmsi);
+
+      const color = getVesselColor(vessel);
+      const rotation = !isNaN(toNum(vessel.course)) ? toNum(vessel.course) : 0;
+
+      const existing = markers.get(vessel.mmsi);
+      if (existing) {
+        // ── Update position + rotation ──────────────────────────────────
+        existing.setLatLng([lat, lon]);
+        const el = existing.getElement();
+        if (el) {
+          const arrow = el.querySelector<HTMLElement>('.vessel-arrow-inner');
+          if (arrow) arrow.style.transform = `rotate(${rotation}deg)`;
+        }
+      } else {
+        // ── Create new Leaflet marker ───────────────────────────────────
+        const icon = L.divIcon({
+          html: `<div class="vessel-arrow-inner" style="transform:rotate(${rotation}deg);width:16px;height:16px;">
+                   <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                     <path d="M8 1 L14 14 L8 12 L2 14 Z" fill="${color}" stroke="#000" stroke-width="0.8" opacity="0.9"/>
+                   </svg>
+                 </div>`,
+          className: 'vessel-marker-icon',
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
+          popupAnchor: [0, -10],
+        });
+
+        const marker = L.marker([lat, lon], { icon, interactive: true });
+
+        marker.bindTooltip(
+          `<strong style="color:rgba(0,255,255,0.95)">${vessel.vesselName || 'Unknown'}</strong>`,
+          { className: 'vessel-tooltip', direction: 'top', offset: [0, -10] }
+        );
+
+        marker.bindPopup(createPopupContent(vessel), {
+          maxWidth: 300,
+          className: 'vessel-popup',
+        });
+
+        marker.on('click', () => onClickRef.current?.(vessel));
+
+        marker.addTo(map);
+        markers.set(vessel.mmsi, marker);
+      }
+    });
+
+    // Remove stale markers (vessels that are no longer in the incoming list)
+    markers.forEach((_marker, mmsi) => {
+      if (!incomingIds.has(mmsi)) {
+        _marker.remove();
+        markers.delete(mmsi);
+      }
+    });
+
+    // ⚠️  No cleanup return that removes markers – doing so would wipe them
+    //     every time `vessels` updates (i.e. every WebSocket tick).
+  }, [vessels, enabled, map]);
+
+  // ─── Unmount cleanup ─────────────────────────────────────────────────────
   useEffect(() => {
-    const vesselsMap = vesselsMapRef.current;
+    const markers = markersRef.current;
     return () => {
-      vesselsMap.forEach(entry => entry.marker.remove());
-      vesselsMap.clear();
+      markers.forEach((m) => m.remove());
+      markers.clear();
     };
   }, []);
 
   return (
     <style jsx global>{`
-      .vessel-arrow-marker {
+      .vessel-marker-icon {
         background: transparent !important;
         border: none !important;
       }
-
-      .vessel-arrow-svg {
-        transition: transform 0.3s ease-out;
-        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+      .vessel-arrow-inner {
+        filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6));
       }
-
-      .vessel-canvas-tooltip {
-        background: rgba(0, 0, 0, 0.85) !important;
-        border: 1px solid rgba(0, 255, 255, 0.3) !important;
+      .vessel-tooltip {
+        background: rgba(0,0,0,0.85) !important;
+        border: 1px solid rgba(0,255,255,0.35) !important;
         border-radius: 4px !important;
-        padding: 4px 8px !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
-        color: #ffffff;
+        padding: 3px 8px !important;
+        color: #fff;
+        font-family: Inter, sans-serif;
+        font-size: 12px;
       }
-
-      .vessel-canvas-tooltip .leaflet-tooltip-left::before,
-      .vessel-canvas-tooltip .leaflet-tooltip-right::before {
-        border-left-color: rgba(0, 0, 0, 0.85) !important;
-        border-right-color: rgba(0, 0, 0, 0.85) !important;
-      }
-
       .vessel-popup .leaflet-popup-content-wrapper {
-        background: rgba(0, 0, 0, 0.9);
-        border: 1px solid rgba(0, 255, 255, 0.3);
+        background: rgba(10,15,30,0.95);
+        border: 1px solid rgba(0,255,255,0.3);
         border-radius: 8px;
         padding: 0;
+        color: #fff;
         backdrop-filter: blur(8px);
       }
-
       .vessel-popup .leaflet-popup-content {
-        margin: 0;
-        padding: 12px;
-        color: #ffffff;
-        font-family: 'Inter', sans-serif;
-        font-size: 13px;
-        line-height: 1.5;
+        margin: 12px;
+        font-family: Inter, sans-serif;
       }
-
       .vessel-popup .leaflet-popup-tip {
-        background: rgba(0, 0, 0, 0.9);
-        border: 1px solid rgba(0, 255, 255, 0.3);
+        background: rgba(10,15,30,0.95);
       }
     `}</style>
   );
-}
-
-function createPopupContent(vessel: VesselPosition): string {
-  const speed = vessel.speed !== null && vessel.speed !== undefined 
-    ? vessel.speed.toFixed(1) 
-    : 'N/A';
-  const course = vessel.course !== null && vessel.course !== undefined 
-    ? vessel.course.toFixed(0) + '°' 
-    : 'N/A';
-  const coords = vessel.latitude !== null && vessel.longitude !== null
-    ? `${vessel.latitude.toFixed(6)}, ${vessel.longitude.toFixed(6)}`
-    : 'N/A';
-
-  return `
-    <div style="min-width: 250px;">
-      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(0, 255, 255, 0.2);">
-        <div style="font-size: 24px;">🚢</div>
-        <div>
-          <div style="font-weight: 600; font-size: 14px; color: rgba(0, 255, 255, 0.95);">${vessel.vesselName || 'Unknown Vessel'}</div>
-          <div style="font-size: 11px; color: rgba(255, 255, 255, 0.6);">MMSI: ${vessel.mmsi}</div>
-        </div>
-      </div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px;">
-        <div>
-          <div style="color: rgba(255, 255, 255, 0.6); font-size: 10px; margin-bottom: 2px;">Speed</div>
-          <div style="font-weight: 500;">${speed} knots</div>
-        </div>
-        <div>
-          <div style="color: rgba(255, 255, 255, 0.6); font-size: 10px; margin-bottom: 2px;">Course</div>
-          <div style="font-weight: 500;">${course}</div>
-        </div>
-        <div style="grid-column: 1 / -1;">
-          <div style="color: rgba(255, 255, 255, 0.6); font-size: 10px; margin-bottom: 2px;">Position</div>
-          <div style="font-family: 'Roboto Mono', monospace; font-size: 11px;">${coords}</div>
-        </div>
-      </div>
-    </div>
-  `;
 }

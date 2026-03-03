@@ -58,6 +58,8 @@ export default function HistoryPlaybackPanel({
   const [error, setError] = useState<string | null>(null);
 
   const playbackInterval = useRef<NodeJS.Timeout | null>(null);
+  const startDateRef = useRef<HTMLInputElement>(null);
+  const endDateRef = useRef<HTMLInputElement>(null);
 
   // Initialize dates (last 7 days)
   useEffect(() => {
@@ -223,8 +225,8 @@ export default function HistoryPlaybackPanel({
   const progress = historyData.length > 0 ? (currentIndex / (historyData.length - 1)) * 100 : 0;
 
   return (
-    <div className="fixed right-6 top-20 w-[480px] bg-white rounded-xl border border-[#E0E0E0] shadow-2xl z-1100">
-      <div className="p-6 flex flex-col gap-5">
+    <div className="fixed right-6 top-20 w-120 bg-white rounded-xl border border-[#E0E0E0] shadow-lg z-1100">
+      <div className="p-6 flex flex-col gap-5 max-h-[calc(100vh-96px)] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-[#333333]">History Playback</h2>
@@ -242,22 +244,54 @@ export default function HistoryPlaybackPanel({
             Select Date Range
           </label>
           <div className="grid grid-cols-2 gap-3">
+            {/* Start date */}
             <div className="relative">
-              <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 w-[18px] h-[18px] text-[#999999] pointer-events-none" />
+              <button
+                type="button"
+                onClick={() => startDateRef.current?.showPicker()}
+                className="flex items-center gap-2 h-11 w-full bg-[#F5F5F5] border border-[#E0E0E0] rounded-lg px-3 hover:border-[#00A0E3] transition-colors"
+              >
+                <Calendar className="w-4 h-4 text-[#999999] shrink-0" />
+                <span className="text-[13px] text-[#333333] flex-1 text-left truncate">
+                  {startDate
+                    ? new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Start date'}
+                </span>
+              </button>
               <input
-                type="datetime-local"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full h-11 bg-[#F5F5F5] border border-[#E0E0E0] rounded-lg pl-11 pr-4 text-[13px] text-[#333333] focus:outline-none focus:border-[#00A0E3] transition-colors"
+                ref={startDateRef}
+                type="date"
+                value={startDate ? startDate.slice(0, 10) : ''}
+                onChange={(e) => {
+                  const d = e.target.value;
+                  setStartDate(d ? `${d}T00:00` : '');
+                }}
+                className="sr-only"
               />
             </div>
+            {/* End date */}
             <div className="relative">
-              <Calendar className="absolute left-4 top-1/2 transform -translate-y-1/2 w-[18px] h-[18px] text-[#999999] pointer-events-none" />
+              <button
+                type="button"
+                onClick={() => endDateRef.current?.showPicker()}
+                className="flex items-center gap-2 h-11 w-full bg-[#F5F5F5] border border-[#E0E0E0] rounded-lg px-3 hover:border-[#00A0E3] transition-colors"
+              >
+                <Calendar className="w-4 h-4 text-[#999999] shrink-0" />
+                <span className="text-[13px] text-[#333333] flex-1 text-left truncate">
+                  {endDate
+                    ? new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'End date'}
+                </span>
+              </button>
               <input
-                type="datetime-local"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full h-11 bg-[#F5F5F5] border border-[#E0E0E0] rounded-lg pl-11 pr-4 text-[13px] text-[#333333] focus:outline-none focus:border-[#00A0E3] transition-colors"
+                ref={endDateRef}
+                type="date"
+                value={endDate ? endDate.slice(0, 10) : ''}
+                onChange={(e) => {
+                  const d = e.target.value;
+                  setEndDate(d ? `${d}T23:59` : '');
+                }}
+                className="sr-only"
               />
             </div>
           </div>
@@ -279,13 +313,13 @@ export default function HistoryPlaybackPanel({
                 }
               }}
               placeholder={selectedVessel ? selectedVessel.vessel_name : "MV PACIFIC EXPLORER"}
-              className="w-full h-11 bg-[#F5F5F5] border border-[#E0E0E0] rounded-lg px-4 text-[13px] text-[#333333] placeholder:text-[#333333] focus:outline-none focus:border-[#00A0E3] transition-colors"
+              className="w-full h-11 bg-[#F5F5F5] border border-[#E0E0E0] rounded-lg px-4 pr-10 text-[13px] text-[#333333] placeholder:text-[#333333] focus:outline-none focus:border-[#00A0E3] transition-colors"
             />
-            <ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 w-[18px] h-[18px] text-[#999999] pointer-events-none" />
-            
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#999999] pointer-events-none" />
+
             {/* Search Results Dropdown */}
             {showSearchDropdown && searchResults.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-[#E0E0E0] rounded-lg shadow-xl max-h-[200px] overflow-y-auto z-20">
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#E0E0E0] rounded-lg shadow-lg max-h-50 overflow-y-auto z-20">
                 {searchResults.map((vessel) => (
                   <button
                     key={vessel.mmsi}
@@ -293,8 +327,8 @@ export default function HistoryPlaybackPanel({
                     className="w-full px-4 py-3 text-left hover:bg-[#F5F5F5] transition-colors border-b border-[#E0E0E0] last:border-b-0"
                   >
                     <div className="text-[13px] font-medium text-[#333333]">{vessel.vessel_name}</div>
-                    <div className="text-xs text-[#666666] mt-1">
-                      MMSI: {vessel.mmsi} {vessel.vessel_type ? `• ${vessel.vessel_type}` : ''}
+                    <div className="text-xs text-[#666666] mt-0.5">
+                      MMSI: {vessel.mmsi}{vessel.vessel_type ? ` • ${vessel.vessel_type}` : ''}
                     </div>
                   </button>
                 ))}
@@ -303,12 +337,12 @@ export default function HistoryPlaybackPanel({
           </div>
         </div>
 
-        {/* Playback Controls Section - ALWAYS VISIBLE */}
+        {/* Playback Controls Section */}
         <div className="flex flex-col gap-4">
           <label className="text-[13px] font-medium text-[#666666]">
             Playback Controls
           </label>
-          
+
           {/* Play/Pause/Skip Buttons */}
           <div className="flex items-center justify-center gap-3">
             <button
@@ -318,19 +352,19 @@ export default function HistoryPlaybackPanel({
             >
               <SkipBack className="w-5 h-5 text-[#333333]" />
             </button>
-            
+
             <button
               onClick={togglePlayPause}
               disabled={historyData.length === 0}
               className="w-14 h-14 flex items-center justify-center bg-[#00A0E3] hover:bg-[#008FC7] disabled:opacity-50 disabled:cursor-not-allowed rounded-full transition-colors"
             >
               {isPlaying ? (
-                <Pause className="w-6 h-6 text-[#0A0E1A]" />
+                <Pause className="w-6 h-6 text-white" />
               ) : (
-                <Play className="w-6 h-6 text-[#0A0E1A] ml-0.5" />
+                <Play className="w-6 h-6 text-white ml-0.5" />
               )}
             </button>
-            
+
             <button
               onClick={skipForward}
               disabled={historyData.length === 0}
@@ -349,7 +383,7 @@ export default function HistoryPlaybackPanel({
                 disabled={historyData.length === 0}
                 className={`h-10 rounded-lg text-[13px] font-medium transition-colors ${
                   playbackSpeed === speed
-                    ? 'bg-[#00A0E3] text-[#333333] font-semibold'
+                    ? 'bg-[#00A0E3] text-white font-semibold'
                     : 'bg-[#F5F5F5] text-[#666666] hover:bg-[#E0E0E0]'
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
@@ -359,43 +393,36 @@ export default function HistoryPlaybackPanel({
           </div>
         </div>
 
-        {/* Timeline Section - ALWAYS VISIBLE */}
+        {/* Timeline Section */}
         <div className="flex flex-col gap-3">
           <label className="text-[13px] font-medium text-[#666666]">
             Timeline
           </label>
-          
-          {/* Timeline Visual */}
-          <div className="relative h-[60px] bg-[#F5F5F5] rounded-lg overflow-hidden">
-            {/* Progress Fill (only when we have data) */}
+
+          <div className="relative h-15 bg-[#F5F5F5] rounded-lg overflow-hidden">
             {historyData.length > 0 && (
               <>
                 <div
-                  className="absolute top-0 left-0 h-full bg-[#00A0E3] bg-opacity-20 transition-all duration-300"
+                  className="absolute top-0 left-0 h-full bg-[#00A0E3]/20 transition-all duration-300"
                   style={{ width: `${progress}%` }}
                 />
-                
-                {/* Current Position Marker */}
                 <div
                   className="absolute top-3 w-1 h-9 bg-[#00A0E3] rounded-full transition-all duration-300"
-                  style={{ left: `${progress}%` }}
+                  style={{ left: `calc(${progress}% - 2px)` }}
                 />
               </>
             )}
-            
-            {/* Start Date Label */}
-            <div className="absolute left-3 top-5 text-xs text-[#999999] font-medium">
+
+            <span className="absolute left-3 bottom-3 text-[11px] text-[#999999] font-medium">
               {startDate ? new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Start'}
-            </div>
-            
-            {/* End Date Label */}
-            <div className="absolute right-3 top-5 text-xs text-[#999999] font-medium">
+            </span>
+            <span className="absolute right-3 bottom-3 text-[11px] text-[#999999] font-medium">
               {endDate ? new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'End'}
-            </div>
+            </span>
           </div>
         </div>
 
-        {/* Load History Button or Current Position Info */}
+        {/* Load History / Position Info */}
         {historyData.length === 0 ? (
           <>
             <button
@@ -406,7 +433,6 @@ export default function HistoryPlaybackPanel({
               {isLoading ? 'Loading...' : 'Load History'}
             </button>
 
-            {/* Error Message */}
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-[13px] text-red-600">{error}</p>
@@ -414,7 +440,6 @@ export default function HistoryPlaybackPanel({
             )}
           </>
         ) : (
-          /* Current Position Info */
           <div className="grid grid-cols-3 gap-3 p-3 bg-[#F5F5F5] border border-[#E0E0E0] rounded-lg text-[13px]">
             <div>
               <div className="text-[#999999]">Position</div>
