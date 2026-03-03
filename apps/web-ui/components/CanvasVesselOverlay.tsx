@@ -45,6 +45,8 @@ export default function CanvasVesselOverlay({
   enabled,
   onVesselClick 
 }: CanvasVesselOverlayProps) {
+  console.log(`CanvasVesselOverlay render: vessels.length=${vessels.length}, enabled=${enabled}`);
+  
   const map = useMap();
   const canvasLayerRef = useRef<L.Canvas | null>(null);
   const vesselsMapRef = useRef<Map<number, { marker: L.Marker; vessel: VesselPosition }>>(new Map());
@@ -66,6 +68,8 @@ export default function CanvasVesselOverlay({
         return;
       }
 
+      console.log(`CanvasVesselOverlay: Updating ${vessels.length} vessels`);
+
       const vesselsMap = vesselsMapRef.current;
       const currentVesselIds = new Set(vessels.map(v => v.mmsi));
       const existingVesselIds = new Set(vesselsMap.keys());
@@ -82,8 +86,11 @@ export default function CanvasVesselOverlay({
       });
 
       // Update or create markers
+      let created = 0;
+      let updated = 0;
       vessels.forEach((vessel) => {
         if (typeof vessel.latitude !== 'number' || typeof vessel.longitude !== 'number') {
+          console.warn(`Invalid position for vessel ${vessel.mmsi}:`, vessel.latitude, vessel.longitude);
           return;
         }
 
@@ -104,6 +111,7 @@ export default function CanvasVesselOverlay({
               (arrow as HTMLElement).style.transform = `rotate(${rotation}deg)`;
             }
           }
+          updated++;
         } else {
           // Create new arrow marker using DivIcon for better control
           const icon = L.divIcon({
@@ -151,15 +159,20 @@ export default function CanvasVesselOverlay({
 
           marker.addTo(map);
           vesselsMap.set(vessel.mmsi, { marker, vessel });
+          created++;
         }
       });
 
+      console.log(`CanvasVesselOverlay: Created ${created}, Updated ${updated}, Total markers: ${vesselsMap.size}`);
       needsUpdateRef.current = false;
       animationFrameRef.current = null;
     };
 
+    console.log(`CanvasVesselOverlay useEffect: enabled=${enabled}, vessels.length=${vessels.length}, animationFrameScheduled=${!!animationFrameRef.current}`);
+
     // Schedule update if needed
     if (enabled && vessels.length > 0 && !animationFrameRef.current) {
+      console.log('CanvasVesselOverlay: Scheduling RAF update');
       needsUpdateRef.current = true;
       animationFrameRef.current = requestAnimationFrame(updateMarkers);
     }
