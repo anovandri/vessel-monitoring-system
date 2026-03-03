@@ -44,8 +44,8 @@ public class MockAISCollector extends DataCollector {
         this.mockGenerator = mockGenerator;
         this.objectMapper = objectMapper;
         
-        // Generate 50-100 vessel updates per collection cycle (Canvas renderer can handle this efficiently)
-        this.vesselsPerCollection = 50 + (int)(Math.random() * 51);
+        // Generate 80-130 vessel updates per collection cycle (Canvas renderer can handle this efficiently)
+        this.vesselsPerCollection = 80 + (int)(Math.random() * 51);
         
         log.info("🚢 Mock AIS Collector initialized for Indonesian maritime demo");
         log.info("📍 Monitoring areas: {}", mockGenerator.getMonitoredAreas());

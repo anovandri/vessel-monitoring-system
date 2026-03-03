@@ -310,7 +310,7 @@ public class MockAISDataGenerator {
         posReport.setCog(state.heading);
         posReport.setTrueHeading((int) Math.round(state.heading));
         posReport.setNavigationalStatus(state.navigationalStatus);
-        posReport.setTimestamp(Instant.now().toString());
+        posReport.setTimestamp(String.valueOf(Instant.now().toEpochMilli()));
         
         msg.setPositionReport(posReport);
         message.setMessage(msg);
@@ -412,7 +412,7 @@ public class MockAISDataGenerator {
         posReport.setNavigationalStatus(navStatus);
         
         // Timestamp
-        posReport.setTimestamp(Instant.now().toString());
+        posReport.setTimestamp(String.valueOf(Instant.now().toEpochMilli()));
         
         msg.setPositionReport(posReport);
         message.setMessage(msg);

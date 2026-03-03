@@ -7,6 +7,27 @@ import { VesselPosition, VesselAlert } from '@/lib/types/vessel';
 
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:8082';
 
+// Helper to convert string numbers to actual numbers (backend sends strings due to Jackson config)
+function normalizeVesselPosition(position: unknown): VesselPosition {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pos = position as any;
+  return {
+    ...pos,
+    mmsi: typeof pos.mmsi === 'string' ? parseInt(pos.mmsi) : pos.mmsi,
+    latitude: typeof pos.latitude === 'string' ? parseFloat(pos.latitude) : pos.latitude,
+    longitude: typeof pos.longitude === 'string' ? parseFloat(pos.longitude) : pos.longitude,
+    speed: pos.speed !== null && typeof pos.speed === 'string' ? parseFloat(pos.speed) : pos.speed,
+    course: pos.course !== null && typeof pos.course === 'string' ? parseFloat(pos.course) : pos.course,
+    heading: pos.heading !== null && typeof pos.heading === 'string' ? parseFloat(pos.heading) : pos.heading,
+    draught: pos.draught !== null && typeof pos.draught === 'string' ? parseFloat(pos.draught) : pos.draught,
+    length: pos.length !== null && typeof pos.length === 'string' ? parseFloat(pos.length) : pos.length,
+    width: pos.width !== null && typeof pos.width === 'string' ? parseFloat(pos.width) : pos.width,
+    distanceFromPrevious: pos.distanceFromPrevious !== null && typeof pos.distanceFromPrevious === 'string' ? parseFloat(pos.distanceFromPrevious) : pos.distanceFromPrevious,
+    timeSinceLastUpdate: pos.timeSinceLastUpdate !== null && typeof pos.timeSinceLastUpdate === 'string' ? parseInt(pos.timeSinceLastUpdate) : pos.timeSinceLastUpdate,
+    validated: typeof pos.validated === 'string' ? pos.validated === 'true' : pos.validated,
+  };
+}
+
 interface UseVesselWebSocketOptions {
   enabled?: boolean;
   onPositionUpdate?: (position: VesselPosition) => void;
@@ -109,17 +130,20 @@ export function useVesselWebSocket(options: UseVesselWebSocketOptions = {}) {
         // Subscribe to vessel positions
         client.subscribe('/topic/vessel-positions', (message: IMessage) => {
           try {
-            let position: VesselPosition;
+            let rawPosition: unknown;
             
             // Parse the message body - handle double-encoded JSON from backend
             const body = message.body;
             if (typeof body === 'string') {
               const parsed = JSON.parse(body);
               // Check if it's still a string (double-encoded)
-              position = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+              rawPosition = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
             } else {
-              position = body;
+              rawPosition = body;
             }
+            
+            // Normalize the position data (convert string numbers to actual numbers)
+            const position = normalizeVesselPosition(rawPosition);
             
             console.log('Vessel position updated:', position.mmsi, position.vesselName);
             

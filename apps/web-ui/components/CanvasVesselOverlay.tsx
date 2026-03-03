@@ -89,14 +89,23 @@ export default function CanvasVesselOverlay({
       let created = 0;
       let updated = 0;
       vessels.forEach((vessel) => {
-        if (typeof vessel.latitude !== 'number' || typeof vessel.longitude !== 'number') {
+        // Convert string coordinates to numbers if needed (backend sends strings due to Jackson config)
+        const lat = typeof vessel.latitude === 'string' ? parseFloat(vessel.latitude) : vessel.latitude;
+        const lon = typeof vessel.longitude === 'string' ? parseFloat(vessel.longitude) : vessel.longitude;
+        
+        if (typeof lat !== 'number' || isNaN(lat) || typeof lon !== 'number' || isNaN(lon)) {
           console.warn(`Invalid position for vessel ${vessel.mmsi}:`, vessel.latitude, vessel.longitude);
           return;
         }
 
-        const position = L.latLng(vessel.latitude, vessel.longitude);
+        const position = L.latLng(lat, lon);
         const color = getVesselColor(vessel);
-        const rotation = vessel.course !== null && vessel.course !== undefined ? vessel.course : 0;
+        
+        // Handle course - convert string to number if needed
+        let rotation = 0;
+        if (vessel.course !== null && vessel.course !== undefined) {
+          rotation = typeof vessel.course === 'string' ? parseFloat(vessel.course) : vessel.course;
+        }
         const existingEntry = vesselsMap.get(vessel.mmsi);
 
         if (existingEntry) {

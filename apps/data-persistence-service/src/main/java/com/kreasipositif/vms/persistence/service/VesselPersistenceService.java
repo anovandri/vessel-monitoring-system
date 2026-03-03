@@ -58,11 +58,11 @@ public class VesselPersistenceService {
         """;
 
     private static final String CLICKHOUSE_INSERT_SQL = """
-        INSERT INTO vessel_positions_history
+        INSERT INTO vessel_monitoring.vessel_positions_history
         (mmsi, vessel_name, vessel_type, latitude, longitude, speed, course, heading,
          navigational_status, timestamp, country, flag_state, callsign, imo_number,
          destination, eta, draught, cargo_type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, toDateTime(?), ?, ?, ?, ?, toDateTime(?), ?, ?, ?)
         """;
 
     @Transactional
@@ -124,15 +124,54 @@ public class VesselPersistenceService {
     private void saveToClickHouse(List<JsonNode> positions) {
         try {
             positions.forEach(position -> {
-                // Convert timestamp from milliseconds to java.sql.Timestamp
-                long timestampMillis = position.get("timestamp").asLong();
-                Timestamp timestamp = new Timestamp(timestampMillis);
+                // Parse timestamp - handle both string and numeric formats
+                JsonNode timestampNode = position.get("timestamp");
+                long timestampMillis;
                 
-                // Convert eta from milliseconds to Timestamp if present
-                Timestamp eta = null;
+                if (timestampNode.isTextual()) {
+                    // String format - might be with decimal (seconds.nanos) or without
+                    String tsStr = timestampNode.asText();
+                    try {
+                        // Try parsing as double first (handles "1772524274.199106000")
+                        double tsDouble = Double.parseDouble(tsStr);
+                        timestampMillis = (long) (tsDouble * 1000); // Convert seconds to millis
+                    } catch (NumberFormatException e) {
+                        try {
+                            // Try as plain long
+                            timestampMillis = Long.parseLong(tsStr);
+                        } catch (NumberFormatException e2) {
+                            // Might be ISO-8601
+                            timestampMillis = java.time.Instant.parse(tsStr).toEpochMilli();
+                        }
+                    }
+                } else if (timestampNode.isNumber()) {
+                    // Numeric format - could be seconds or millis
+                    timestampMillis = timestampNode.longValue();
+                } else {
+                    timestampMillis = System.currentTimeMillis();
+                    log.warn("Unable to parse timestamp, using current time");
+                }
+                
+                long timestampSeconds = timestampMillis / 1000;
+                
+                log.info("ClickHouse Insert - MMSI: {}, Raw: {}, Parsed millis: {}, Seconds: {}", 
+                    position.get("mmsi").asInt(), timestampNode, timestampMillis, timestampSeconds);
+                
+                // Convert eta similarly
+                Long etaSeconds = null;
                 if (position.has("eta") && !position.get("eta").isNull()) {
-                    long etaMillis = position.get("eta").asLong();
-                    eta = new Timestamp(etaMillis);
+                    JsonNode etaNode = position.get("eta");
+                    long etaMillis;
+                    if (etaNode.isTextual()) {
+                        try {
+                            etaMillis = Long.parseLong(etaNode.asText());
+                        } catch (NumberFormatException e) {
+                            etaMillis = java.time.Instant.parse(etaNode.asText()).toEpochMilli();
+                        }
+                    } else {
+                        etaMillis = etaNode.longValue();
+                    }
+                    etaSeconds = etaMillis / 1000;
                 }
                 
                 clickhouseJdbcTemplate.update(CLICKHOUSE_INSERT_SQL,
@@ -145,13 +184,13 @@ public class VesselPersistenceService {
                     position.get("course").asDouble(),
                     getDoubleOrNull(position, "heading"),
                     getStringOrEmpty(position, "navigationalStatus"),
-                    timestamp,  // Use Timestamp object instead of asText()
+                    timestampSeconds,  // Use seconds for ClickHouse DateTime with toDateTime()
                     getStringOrEmpty(position, "country"),
                     getStringOrEmpty(position, "flagState"),
                     getStringOrEmpty(position, "callsign"),
                     getStringOrEmpty(position, "imoNumber"),
                     getStringOrEmpty(position, "destination"),
-                    eta,  // Use Timestamp object for DateTime field
+                    etaSeconds,  // Use seconds for ClickHouse DateTime
                     getDoubleOrNull(position, "draught"),
                     getStringOrEmpty(position, "cargoType")
                 );

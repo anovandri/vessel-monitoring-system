@@ -36,7 +36,7 @@ vms:
     
     # Collection schedule interval (milliseconds)
     schedule:
-      interval: 10000  # 10 seconds
+      interval: 5000  # 5 seconds
     
     # AIS Collector Configuration
     ais:

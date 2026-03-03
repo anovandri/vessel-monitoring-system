@@ -2,11 +2,13 @@
 
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import { Plus, Minus, Layers, Share2, Ship, Bell, Check } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import WeatherOverlay from './WeatherOverlay';
 import CanvasVesselOverlay from './CanvasVesselOverlay';
+import HistoryPlaybackPanel from './HistoryPlaybackPanel';
+import HistoryTrackOverlay from './HistoryTrackOverlay';
 import { WeatherData, getWeatherForBounds } from '@/lib/api/weather';
 import { useVesselWebSocket } from '@/lib/hooks/useVesselWebSocket';
 import { VesselPosition } from '@/lib/types/vessel';
@@ -48,6 +50,23 @@ const MAP_LAYERS = {
 type LayerType = keyof typeof MAP_LAYERS;
 type OverlayType = 'vessels' | 'routes' | 'zones' | 'weather';
 
+interface VesselHistoryPoint {
+  mmsi: number;
+  vessel_name: string;
+  latitude: number;
+  longitude: number;
+  speed: number;
+  course: number;
+  heading: number;
+  navigational_status: number;
+  timestamp: number;
+}
+
+interface MapViewProps {
+  showHistoryPanel?: boolean;
+  onHideHistoryPanel?: () => void;
+}
+
 interface MapControlsProps {
   onLayersClick: () => void;
 }
@@ -74,6 +93,17 @@ function MapBoundsTracker({ onBoundsChange }: { onBoundsChange: (bounds: L.LatLn
     };
   }, [map, onBoundsChange]);
 
+  return null;
+}
+
+// Component to capture map ref
+function MapRefSetter({ mapRef }: { mapRef: React.MutableRefObject<L.Map | null> }) {
+  const map = useMap();
+  
+  useEffect(() => {
+    mapRef.current = map;
+  }, [map, mapRef]);
+  
   return null;
 }
 
@@ -148,7 +178,7 @@ function MapControls({ onLayersClick }: MapControlsProps) {
   );
 }
 
-export default function MapView() {
+export default function MapView({ showHistoryPanel = false, onHideHistoryPanel }: MapViewProps = {}) {
   const [selectedLayer, setSelectedLayer] = useState<LayerType>('standard');
   const [showLayersPanel, setShowLayersPanel] = useState(false);
   const [overlays, setOverlays] = useState<Record<OverlayType, boolean>>({
@@ -162,6 +192,21 @@ export default function MapView() {
   const [isLoadingWeather, setIsLoadingWeather] = useState(false);
   const [selectedVessel, setSelectedVessel] = useState<VesselPosition | null>(null); // eslint-disable-line @typescript-eslint/no-unused-vars
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+
+  // History playback state
+  const [historyPlaybackState, setHistoryPlaybackState] = useState<{
+    isPlaying: boolean;
+    currentIndex: number;
+    historyData: VesselHistoryPoint[];
+    playbackSpeed: number;
+  }>({
+    isPlaying: false,
+    currentIndex: 0,
+    historyData: [],
+    playbackSpeed: 1
+  });
+  const [selectedHistoryVessel, setSelectedHistoryVessel] = useState<{mmsi: number; vessel_name: string} | null>(null);
 
   // WebSocket connection for real-time vessel updates
   const { isConnected, positions: vesselPositions } = useVesselWebSocket({
@@ -257,6 +302,53 @@ export default function MapView() {
     setOverlays(prev => ({ ...prev, [overlay]: !prev[overlay] }));
   };
 
+  // Memoize callbacks to prevent infinite re-renders
+  const handleHistoryClose = useCallback(() => {
+    onHideHistoryPanel?.();
+    setSelectedHistoryVessel(null);
+    setHistoryPlaybackState({
+      isPlaying: false,
+      currentIndex: 0,
+      historyData: [],
+      playbackSpeed: 1
+    });
+  }, [onHideHistoryPanel]);
+
+  const handleVesselSelect = useCallback((vessel: {mmsi: number; vessel_name: string; latitude?: number; longitude?: number} | null) => {
+    console.log('MapView handleVesselSelect called with:', vessel);
+    setSelectedHistoryVessel(vessel);
+    
+    // Pan map to vessel location if coordinates are available
+    if (vessel && vessel.latitude && vessel.longitude && mapRef.current) {
+      console.log('Panning map to vessel location:', vessel.latitude, vessel.longitude);
+      mapRef.current.setView([vessel.latitude, vessel.longitude], 12, {
+        animate: true,
+        duration: 1
+      });
+    } else if (vessel && mapRef.current) {
+      // Try to find vessel in current positions
+      const vesselPosition = vesselPositions.find(v => v.mmsi === vessel.mmsi);
+      if (vesselPosition && vesselPosition.latitude !== null && vesselPosition.longitude !== null) {
+        console.log('Found vessel in current positions, panning to:', vesselPosition.latitude, vesselPosition.longitude);
+        mapRef.current.setView([vesselPosition.latitude, vesselPosition.longitude], 12, {
+          animate: true,
+          duration: 1
+        });
+      } else {
+        console.log('Vessel coordinates not available, cannot pan map');
+      }
+    }
+  }, [vesselPositions]);
+
+  const handlePlaybackStateChange = useCallback((state: {
+    isPlaying: boolean;
+    currentIndex: number;
+    historyData: VesselHistoryPoint[];
+    playbackSpeed: number;
+  }) => {
+    setHistoryPlaybackState(state);
+  }, []);
+
   return (
     <div className="relative w-full h-full bg-[#F0F0F0]">
       <MapContainer
@@ -284,18 +376,38 @@ export default function MapView() {
         {/* Vessel Overlay - Real-time vessel positions */}
         <CanvasVesselOverlay 
           vessels={Array.from(vesselPositions.values())} 
-          enabled={overlays.vessels}
+          enabled={overlays.vessels && !showHistoryPanel}
           onVesselClick={handleVesselClick}
         />
         
         {/* Weather Overlay */}
         <WeatherOverlay weatherData={weatherData} enabled={overlays.weather} />
         
+        {/* History Track Overlay */}
+        <HistoryTrackOverlay
+          map={mapRef.current}
+          historyData={historyPlaybackState.historyData}
+          currentIndex={historyPlaybackState.currentIndex}
+          enabled={showHistoryPanel && historyPlaybackState.historyData.length > 0}
+        />
+        
         {/* Track map bounds */}
         <MapBoundsTracker onBoundsChange={setMapBounds} />
         
+        {/* Set map ref */}
+        <MapRefSetter mapRef={mapRef} />
+        
         <MapControls onLayersClick={() => setShowLayersPanel(!showLayersPanel)} />
       </MapContainer>
+
+      {/* History Playback Panel */}
+      {showHistoryPanel && (
+        <HistoryPlaybackPanel
+          onClose={handleHistoryClose}
+          onVesselSelect={handleVesselSelect}
+          onPlaybackStateChange={handlePlaybackStateChange}
+        />
+      )}
 
       {/* WebSocket Connection Status */}
       {overlays.vessels && (

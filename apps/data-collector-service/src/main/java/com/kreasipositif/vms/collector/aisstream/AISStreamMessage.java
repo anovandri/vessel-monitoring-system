@@ -48,7 +48,13 @@ public class AISStreamMessage {
             ais.setNavigationStatus(pos.navigationalStatus);
             
             if (pos.timestamp != null) {
-                ais.setTimestamp(Instant.parse(pos.timestamp));
+                try {
+                    // Try parsing as milliseconds first (new format)
+                    ais.setTimestamp(Instant.ofEpochMilli(Long.parseLong(pos.timestamp)));
+                } catch (NumberFormatException e) {
+                    // Fallback to ISO-8601 parsing (old format)
+                    ais.setTimestamp(Instant.parse(pos.timestamp));
+                }
             } else {
                 ais.setTimestamp(Instant.now());
             }

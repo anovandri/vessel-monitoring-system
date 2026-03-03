@@ -2,7 +2,11 @@
 
 import { Search, Bell, User } from 'lucide-react';
 
-export default function TopBar() {
+interface TopBarProps {
+  onHistoryClick?: () => void;
+}
+
+export default function TopBar({ onHistoryClick }: TopBarProps) {
   return (
     <div className="h-14 border-b border-[#E0E0E0] px-6 flex items-center justify-between bg-white">
       {/* Left side - Logo and Nav Links */}
@@ -14,7 +18,10 @@ export default function TopBar() {
           <button className="text-sm text-[#333333] hover:text-[#00A0E3] transition-colors">
             Edit
           </button>
-          <button className="text-sm text-[#333333] hover:text-[#00A0E3] transition-colors">
+          <button 
+            onClick={onHistoryClick}
+            className="text-sm text-[#333333] hover:text-[#00A0E3] transition-colors"
+          >
             History
           </button>
           <button className="text-sm text-[#333333] hover:text-[#00A0E3] transition-colors">

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import TopBar from "@/components/TopBar";
 import dynamic from "next/dynamic";
 
@@ -13,13 +14,18 @@ const MapView = dynamic(() => import("@/components/MapView"), {
 });
 
 export default function Home() {
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+
   return (
     <div className="h-screen bg-[#F5F5F5] overflow-hidden flex flex-col">
       {/* Top Bar - 56px height */}
-      <TopBar />
+      <TopBar onHistoryClick={() => setShowHistoryPanel(true)} />
       {/* Map Area - fills remaining height */}
       <div className="flex-1 overflow-hidden">
-        <MapView />
+        <MapView 
+          showHistoryPanel={showHistoryPanel}
+          onHideHistoryPanel={() => setShowHistoryPanel(false)}
+        />
       </div>
     </div>
   );
