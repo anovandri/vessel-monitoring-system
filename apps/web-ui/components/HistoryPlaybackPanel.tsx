@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Calendar, ChevronDown, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 
 interface VesselInfo {
@@ -224,11 +225,13 @@ export default function HistoryPlaybackPanel({
   const currentPosition = historyData[currentIndex];
   const progress = historyData.length > 0 ? (currentIndex / (historyData.length - 1)) * 100 : 0;
 
-  return (
-    <div className="fixed right-6 top-20 w-120 bg-white rounded-xl border border-[#E0E0E0] shadow-lg z-1100">
-      <div className="p-6 flex flex-col gap-5 max-h-[calc(100vh-96px)] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between">
+  const panel = (
+    <div
+      className="fixed right-6 top-20 w-120 bg-white border border-[#E0E0E0] shadow-lg z-1100 p-8"
+    >
+  <div className="flex flex-col gap-6 max-h-[calc(100vh-96px)] overflow-y-auto px-4">
+  {/* Header */}
+  <div className="flex items-center justify-between" style={{ padding: '10px' }}>
           <h2 className="text-lg font-bold text-[#333333]">History Playback</h2>
           <button
             onClick={onClose}
@@ -239,7 +242,7 @@ export default function HistoryPlaybackPanel({
         </div>
 
         {/* Date Range Section */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3" style={{ padding: '10px' }}>
           <label className="text-[13px] font-medium text-[#666666]">
             Select Date Range
           </label>
@@ -298,7 +301,7 @@ export default function HistoryPlaybackPanel({
         </div>
 
         {/* Vessel Search Section */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3" style={{ padding: '10px' }}>
           <label className="text-[13px] font-medium text-[#666666]">
             Select Vessel
           </label>
@@ -316,6 +319,7 @@ export default function HistoryPlaybackPanel({
               className="w-full h-11 bg-[#F5F5F5] border border-[#E0E0E0] rounded-lg px-4 pr-10 text-[13px] text-[#333333] placeholder:text-[#333333] focus:outline-none focus:border-[#00A0E3] transition-colors"
             />
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#999999] pointer-events-none" />
+            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', borderRadius: 'inherit' }} />
 
             {/* Search Results Dropdown */}
             {showSearchDropdown && searchResults.length > 0 && (
@@ -337,8 +341,8 @@ export default function HistoryPlaybackPanel({
           </div>
         </div>
 
-        {/* Playback Controls Section */}
-        <div className="flex flex-col gap-4">
+  {/* Playback Controls Section */}
+  <div className="flex flex-col gap-4" style={{ padding: '10px' }}>
           <label className="text-[13px] font-medium text-[#666666]">
             Playback Controls
           </label>
@@ -394,7 +398,7 @@ export default function HistoryPlaybackPanel({
         </div>
 
         {/* Timeline Section */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3" style={{ padding: '10px' }}>
           <label className="text-[13px] font-medium text-[#666666]">
             Timeline
           </label>
@@ -428,19 +432,19 @@ export default function HistoryPlaybackPanel({
             <button
               onClick={loadHistory}
               disabled={isLoading || !selectedVessel}
-              className="w-full h-11 bg-[#00A0E3] hover:bg-[#008FC7] disabled:bg-[#E0E0E0] disabled:text-[#999999] text-white font-semibold rounded-lg transition-colors text-[13px]"
+              className="w-full h-11 bg-[#00A0E3] hover:bg-[#008FC7] disabled:bg-[#E0E0E0] disabled:text-[#999999] text-white font-semibold transition-colors text-[13px]"
             >
               {isLoading ? 'Loading...' : 'Load History'}
             </button>
 
             {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <div className="p-3 bg-red-50 border border-red-200">
                 <p className="text-[13px] text-red-600">{error}</p>
               </div>
             )}
           </>
         ) : (
-          <div className="grid grid-cols-3 gap-3 p-3 bg-[#F5F5F5] border border-[#E0E0E0] rounded-lg text-[13px]">
+          <div className="grid grid-cols-3 gap-3 p-3 bg-[#F5F5F5] border border-[#E0E0E0] text-[13px]">
             <div>
               <div className="text-[#999999]">Position</div>
               <div className="text-[#333333] font-medium">{currentIndex + 1}/{historyData.length}</div>
@@ -458,4 +462,11 @@ export default function HistoryPlaybackPanel({
       </div>
     </div>
   );
+
+  // Render into document.body so the panel is not affected by transformed ancestors
+  if (typeof document !== 'undefined') {
+    return createPortal(panel, document.body);
+  }
+
+  return panel;
 }

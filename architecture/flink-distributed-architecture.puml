@@ -1,0 +1,37 @@
+@startuml FlinkDistributedJobProcessor
+!theme spacelab
+
+actor User
+artifact "stream-processor.jar" as JobProcessor
+
+rectangle "Flink Cluster" {
+  [JobManager] <<JobManager>>
+  [TaskManager 1] <<TaskManager>>
+  [TaskManager 2] <<TaskManager>>
+  [TaskManager N] <<TaskManager>>
+}
+
+User --> JobProcessor : Build Flink Job (JAR)
+User --> [JobManager] : Submit JobProcessor
+[JobManager] --> JobProcessor : Accepts job
+[JobManager] --> [TaskManager 1] : Assign job tasks
+[JobManager] --> [TaskManager 2] : Assign job tasks
+[JobManager] --> [TaskManager N] : Assign job tasks
+
+JobProcessor ..> [TaskManager 1] : Executes job logic
+JobProcessor ..> [TaskManager 2] : Executes job logic
+JobProcessor ..> [TaskManager N] : Executes job logic
+
+[TaskManager 1] --> [JobManager] : Report status, checkpoints
+[TaskManager 2] --> [JobManager] : Report status, checkpoints
+[TaskManager N] --> [JobManager] : Report status, checkpoints
+
+note right of JobProcessor
+stream-processor.jar is a Flink job
+submitted to the JobManager.
+JobManager coordinates execution,
+distributes work to TaskManagers.
+TaskManagers run the job code in parallel.
+end note
+
+@enduml
